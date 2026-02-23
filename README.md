@@ -1,6 +1,6 @@
 # CredentialsCheck
 
-A Salesforce DX project for managing and validating credentials within the SFDO Community Sprints org.
+A Salesforce DX project for managing and collecting credentials from volunteers (eg. Working with Childrens Check, Police Check, Drivers License).
 
 ## Project Structure
 
