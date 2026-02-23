@@ -1,6 +1,17 @@
-# CredentialsCheck
+# credential-check-au
 
 A Salesforce DX project for managing and collecting credentials from volunteers (eg. Working with Childrens Check, Police Check, Drivers License).
+
+Continuing the work of a team at the February 2024 Sprint, this project expanded the original goal of managing security and information checks for multiple people and matching qualifications to roles.
+
+## Background
+
+Work performed at previous sprints:
+
+- Review of Feb 2024 Sydney Sprint, including a detailed process map in Lucid Chart
+- Expanded scope beyond Working with Children checks to broader credential management use cases
+- Built out data model and permission set structure
+- Credential verification process with data points for credential management
 
 ## Project Structure
 
@@ -22,7 +33,7 @@ credentialscheck/
 
 1. Authenticate to your target org:
    ```bash
-   sf org login web --alias credentialscheck
+   sf org login web --alias credential-check-au
    ```
 
 2. Push source to a scratch org:
