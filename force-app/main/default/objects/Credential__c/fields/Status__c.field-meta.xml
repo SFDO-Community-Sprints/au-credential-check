@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Status__c</fullName>
+    <description>Tracks the credential through its lifecycle. Draft -&gt; Requested (triggers link expiry timer) -&gt; Under Review (volunteer has submitted) -&gt; Active (admin verified and sighted). Expired is set by the nightly Scheduled Flow. Pending is reserved for future use (e.g. third-party verification step). A validation rule blocks transitioning to Active without Sighted__c being true.</description>
+    <externalId>false</externalId>
+    <label>Status</label>
+    <required>true</required>
+    <type>Picklist</type>
+    <valueSet>
+        <valueSetDefinition>
+            <sorted>false</sorted>
+            <value>
+                <fullName>Draft</fullName>
+                <default>true</default>
+                <label>Draft</label>
+            </value>
+            <value>
+                <fullName>Pending</fullName>
+                <default>false</default>
+                <!-- Reserved for a future third-party verification step. Not used in the current flow. -->
+                <label>Pending</label>
+            </value>
+            <value>
+                <fullName>Requested</fullName>
+                <default>false</default>
+                <label>Requested</label>
+            </value>
+            <value>
+                <fullName>Under Review</fullName>
+                <default>false</default>
+                <label>Under Review</label>
+            </value>
+            <value>
+                <fullName>Active</fullName>
+                <default>false</default>
+                <label>Active</label>
+            </value>
+            <value>
+                <fullName>Expired</fullName>
+                <default>false</default>
+                <label>Expired</label>
+            </value>
+        </valueSetDefinition>
+    </valueSet>
+</CustomField>

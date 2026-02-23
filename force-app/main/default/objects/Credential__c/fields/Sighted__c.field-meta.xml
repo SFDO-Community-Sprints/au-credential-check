@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Sighted__c</fullName>
+    <description>Admin-only verification flag. The admin ticks this after physically or digitally reviewing the uploaded credential document. A validation rule blocks Status from being set to "Active" unless this is true. Field History Tracking is enabled so all changes are recorded with user, timestamp, and old/new value - this is the audit trail for the verification step.</description>
+    <defaultValue>false</defaultValue>
+    <externalId>false</externalId>
+    <label>Sighted</label>
+    <!-- trackHistory drives the Field History Tracking requirement from task 1.18. Requires enableHistory=true on the parent object. -->
+    <trackHistory>true</trackHistory>
+    <type>Checkbox</type>
+</CustomField>

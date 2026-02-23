@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Link_Expiry_Days__c</fullName>
+    <description>Number of days after the Requested_Date__c that the volunteer submission link remains active. The Intake Flow compares TODAY() against Requested_Date__c + this value to determine whether the link has expired. A shorter window (e.g. 7 days) limits the vulnerability exposure if a link is forwarded or compromised.</description>
+    <externalId>false</externalId>
+    <label>Link Expiry Days</label>
+    <precision>5</precision>
+    <required>true</required>
+    <scale>0</scale>
+    <type>Number</type>
+    <unique>false</unique>
+</CustomField>

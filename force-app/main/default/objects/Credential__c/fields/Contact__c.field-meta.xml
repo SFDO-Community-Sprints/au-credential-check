@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Contact__c</fullName>
+    <description>Optional link to an individual volunteer (Contact). Use when the credential requirement belongs to a person. At least one of Contact or Account should be populated - see docs/todo.md for the planned validation rule to enforce this. The submission confirmation email is sent to this contact.</description>
+    <externalId>false</externalId>
+    <label>Contact</label>
+    <referenceTo>Contact</referenceTo>
+    <relationshipLabel>Credentials</relationshipLabel>
+    <relationshipName>Credentials_Contact</relationshipName>
+    <required>false</required>
+    <type>Lookup</type>
+</CustomField>

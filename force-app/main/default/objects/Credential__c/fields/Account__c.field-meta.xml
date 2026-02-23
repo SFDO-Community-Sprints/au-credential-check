@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Account__c</fullName>
+    <description>Optional link to an organisation (Account). Use when the credential requirement belongs to an organisation rather than, or in addition to, an individual. At least one of Account or Contact should be populated - see docs/todo.md for the planned validation rule to enforce this.</description>
+    <externalId>false</externalId>
+    <label>Account</label>
+    <referenceTo>Account</referenceTo>
+    <relationshipLabel>Credentials</relationshipLabel>
+    <relationshipName>Credentials_Account</relationshipName>
+    <required>false</required>
+    <type>Lookup</type>
+</CustomField>

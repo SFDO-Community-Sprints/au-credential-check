@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Does_Not_Expire__c</fullName>
+    <description>When true, the Expiry Date field is hidden on the volunteer submission form and the nightly expiry check ignores credentials of this type. Use for one-time checks or documents that do not have a fixed expiry (e.g. some background check categories).</description>
+    <defaultValue>false</defaultValue>
+    <externalId>false</externalId>
+    <label>Does Not Expire</label>
+    <type>Checkbox</type>
+</CustomField>
