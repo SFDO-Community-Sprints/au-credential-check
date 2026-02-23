@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
     <fullName>Requested_Date__c</fullName>
-    <description>The date and time the admin changed Status to "Requested". Automatically stamped by a Before Update Record-Triggered Flow - not editable by users. This is the anchor point for the link expiry calculation: the Intake Flow compares TODAY() against DateValue(Requested_Date__c) + Credential_Type__r.Link_Expiry_Days__c.</description>
-    <externalId>false</externalId>
+    <description>The date and time the admin changed Status to &quot;Requested&quot;. Automatically stamped by a Before Update Record-Triggered Flow - not editable by users. This is the anchor point for the link expiry calculation: the Intake Flow compares TODAY() against DateValue(Requested_Date__c) + Credential_Type__r.Link_Expiry_Days__c.</description>
     <label>Requested Date</label>
     <required>false</required>
+    <trackHistory>false</trackHistory>
+    <trackTrending>false</trackTrending>
     <type>DateTime</type>
 </CustomField>

@@ -3,7 +3,6 @@
     <fullName>Block_Activation_Without_Sighting</fullName>
     <active>true</active>
     <description>Blocks Status = Active unless Sighted__c is ticked. Enforces the admin verification step before a credential can be activated. Sighted__c has Field History Tracking enabled for audit trail.</description>
-    <!-- Fires when the new status is Active but the sighted flag has not been set. Using ISPICKVAL to avoid hardcoding the string comparison. -->
     <errorConditionFormula>ISPICKVAL(Status__c, &quot;Active&quot;) &amp;&amp; NOT(Sighted__c)</errorConditionFormula>
     <errorDisplayField>Status__c</errorDisplayField>
     <errorMessage>This credential cannot be set to Active until the Sighted checkbox is ticked. Please review the uploaded document and confirm you have sighted it before activating.</errorMessage>

@@ -26,37 +26,50 @@ Currently targeting **API v65.0**. Update `sourceApiVersion` in `sfdx-project.js
 ## Component Map
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    Salesforce Org                       │
-│                                                         │
-│  ┌───────────────────┐    ┌────────────────────────┐    │
-│  │  Credential Type  │◄───│     Credential          │    │
-│  │  (Master Object)  │    │  (Transaction Object)  │    │
-│  └───────────────────┘    └────────────┬───────────┘    │
-│                                        │                │
-│                          ┌─────────────▼──────────┐     │
-│                          │  Record-Triggered Flows │     │
-│                          │  - Token Generation     │     │
-│                          │  - Requested Date Stamp │     │
-│                          └────────────────────────┘     │
-│                                                         │
-│  ┌───────────────────────────────────────────────────┐  │
-│  │              Scheduled Flow (Nightly)             │  │
-│  │  Checks Expiry_Date__c, updates Status__c         │  │
-│  └───────────────────────────────────────────────────┘  │
-│                                                         │
-│  ┌───────────────────────────────────────────────────┐  │
-│  │           Experience Cloud Site (Public)          │  │
-│  │  ┌─────────────────────────────────────────────┐  │  │
-│  │  │    Intake Screen Flow (System Mode)         │  │  │
-│  │  │    - Receives token from URL                │  │  │
-│  │  │    - Validates record and expiry            │  │  │
-│  │  │    - Collects volunteer input               │  │  │
-│  │  │    - Uploads file as ContentDocumentLink    │  │  │
-│  │  │    - Updates Credential Status              │  │  │
-│  │  └─────────────────────────────────────────────┘  │  │
-│  └───────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                      Salesforce Org                         │
+│                                                             │
+│  ┌───────────────────┐    ┌──────────────────────────────┐  │
+│  │  Credential Type  │◄───│         Credential           │  │
+│  │  (Master Object)  │    │    (Transaction Object)      │  │
+│  └───────────────────┘    └──────────────┬───────────────┘  │
+│                                          │                  │
+│                           ┌──────────────▼──────────────┐   │
+│                           │    Record-Triggered Flows   │   │
+│                           │    - Token Generation       │   │
+│                           │    - Requested Date Stamp   │   │
+│                           └─────────────────────────────┘   │
+│                                          │                  │
+│                           ┌──────────────▼──────────────┐   │
+│                           │    Credential Request        │   │
+│                           │    (Staging Object)          │   │
+│                           └──────────────┬──────────────┘   │
+│                                          │                  │
+│                           ┌──────────────▼──────────────┐   │
+│                           │  Credential_Request_Approval │   │
+│                           │  (Record-Triggered Flow)     │   │
+│                           │  Copies data to Credential   │   │
+│                           │  on Status = Approved        │   │
+│                           └─────────────────────────────┘   │
+│                                                             │
+│  ┌─────────────────────────────────────────────────────┐    │
+│  │              Scheduled Flow (Nightly)               │    │
+│  │  Checks Expiry_Date__c, updates Status__c           │    │
+│  └─────────────────────────────────────────────────────┘    │
+│                                                             │
+│  ┌─────────────────────────────────────────────────────┐    │
+│  │           Experience Cloud Site (Public)            │    │
+│  │  ┌───────────────────────────────────────────────┐  │    │
+│  │  │    Intake Screen Flow (System Mode)           │  │    │
+│  │  │    - Receives token from URL                  │  │    │
+│  │  │    - Validates record and expiry              │  │    │
+│  │  │    - Creates Credential Request staging rec   │  │    │
+│  │  │    - Collects volunteer input                 │  │    │
+│  │  │    - Uploads file to Credential Request       │  │    │
+│  │  │    - Updates Credential Status to Under Review│  │    │
+│  │  └───────────────────────────────────────────────┘  │    │
+│  └─────────────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -76,15 +89,26 @@ Currently targeting **API v65.0**. Update `sourceApiVersion` in `sfdx-project.js
 
 1. Volunteer opens the URL. Experience Cloud loads and passes the `id` query parameter to the Intake Screen Flow.
 2. Flow performs a SOQL query: `SELECT ... FROM Credential__c WHERE Unique_Token__c = :id`.
-3. Flow evaluates the Decision element:
+3. Flow evaluates the Decision elements:
    - No record found -> "Invalid Link" screen.
    - `Status__c != "Requested"` -> "Already Submitted" screen.
    - `TODAY() > DateValue(Requested_Date__c) + Link_Expiry_Days__c` -> "Link Expired" screen.
-4. On success path: flow displays the intake screen showing `Credential_Type__r.Type__c`.
-5. Volunteer enters `Issued_By__c`, `Expiry_Date__c` (conditionally), and uploads a file.
-6. Flow creates `ContentDocumentLink` linking the uploaded file to the Credential record.
-7. Flow updates `Status__c` to "Under Review" and saves `Issued_By__c` and `Expiry_Date__c`.
-8. Confirmation email is sent to the linked Contact or Account.
+4. On success path: flow creates a `Credential_Request__c` staging record (Status = Pending Review, linked to the Credential). This must happen before the screen renders because the file upload component requires a `recordId` at load time.
+5. Flow displays the intake screen showing `Credential_Type__r.Type__c`.
+6. Volunteer enters `Issued_By__c`, `Expiry_Date__c` (conditionally), and uploads a file.
+7. Flow creates `ContentDocumentLink` attaching the uploaded file to the `Credential_Request__c` record.
+8. Flow writes `Issued_By__c` and `Expiry_Date__c` to the `Credential_Request__c` record.
+9. Flow updates `Credential__c.Status__c` to "Under Review". `Issued_By__c` and `Expiry_Date__c` on the Credential are NOT written - they remain blank until the request is approved.
+
+### Admin Approval
+
+1. Admin opens the Credential record and navigates to the Credential Requests related list.
+2. Admin opens the `Credential_Request__c` record to review the submitted data and attached file.
+3. Admin changes `Status__c` to "Approved" (or "Rejected").
+4. On Approved: `Credential_Request_Approval` (record-triggered After Save flow) fires.
+   - Guards against re-fire: checks `$Record__Prior.Status__c != Approved`.
+   - Updates the linked `Credential__c` record, writing `Issued_By__c` and `Expiry_Date__c` from the request.
+5. Files stay on the `Credential_Request__c` record permanently as an audit trail.
 
 ### Nightly Expiry Check
 

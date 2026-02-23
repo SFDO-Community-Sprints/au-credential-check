@@ -10,10 +10,14 @@ Credential_Type__c  (1)
         | (Lookup)
         |
 Credential__c  (many)
-    |         |
-    |         |
-Contact__c  Account__c
-(Optional)  (Optional)
+    |   |     |
+    |   |     |
+    | Contact__c  Account__c
+    |  (Optional)  (Optional)
+    |
+    | (Lookup - deleteConstraint: Restrict)
+    |
+Credential_Request__c  (many)
 ```
 
 ---
@@ -79,4 +83,39 @@ Draft -> Requested -> Under Review -> Active
 ### Key Relationships
 
 - A Credential record must have either a Contact or an Account (or both). The system does not enforce this declaratively today - add a validation rule if this constraint must be hard-enforced (see `docs/todo.md`).
-- Files uploaded by the volunteer are stored as `ContentDocument` records linked to the Credential via `ContentDocumentLink`. This uses standard Salesforce Files infrastructure.
+- Files uploaded by the volunteer are stored as `ContentDocument` records linked to the Credential Request via `ContentDocumentLink`. Files stay on the Credential Request for audit purposes and are never moved to the Credential record.
+
+---
+
+## Credential Request (`Credential_Request__c`)
+
+Staging object for volunteer credential submissions awaiting admin review. The Intake Flow creates one record per submission, capturing the volunteer-entered data here rather than writing it directly to `Credential__c`. This gives admins a review gate before any submission data reaches the authoritative credential record.
+
+OWD is **ReadWrite** - internal users can read and update all requests. Volunteers access only via the System Mode Intake Flow and cannot query this object directly.
+
+| Field Label | API Name | Data Type | Notes |
+|---|---|---|---|
+| Name | Name | Auto-Number | Format: `CRQ-{0000}`. System-generated identifier. |
+| Credential | Credential__c | Lookup (Credential__c) | Required. Links to the parent credential. deleteConstraint: Restrict - a Credential cannot be deleted while requests are linked. |
+| Status | Status__c | Picklist | See status lifecycle below. |
+| Issued By | Issued_By__c | Text (255) | Issuing authority name entered by the volunteer. Copied to `Credential__c.Issued_By__c` on approval. |
+| Expiry Date | Expiry_Date__c | Date | Document expiry date entered by the volunteer. Blank when the parent Credential Type has `Does_Not_Expire__c = true`. Copied to `Credential__c.Expiry_Date__c` on approval. |
+
+### Status Lifecycle
+
+```
+Pending Review -> Approved
+              -> Rejected
+```
+
+| Status | Meaning |
+|---|---|
+| Pending Review | Default. Set by the Intake Flow when the record is created. Awaiting admin review. |
+| Approved | Admin has reviewed the submission and accepts it. Triggers the `Credential_Request_Approval` flow which copies `Issued_By__c` and `Expiry_Date__c` to the linked `Credential__c`. |
+| Rejected | Admin has reviewed the submission and rejects it. No automated action. Record is retained for audit. |
+
+### Key Relationships
+
+- Each Credential Request belongs to exactly one Credential record via `Credential__c` (required Lookup).
+- A Credential may have multiple Credential Requests over its lifetime (e.g. if a submission is rejected and a new link is issued).
+- Files uploaded by the volunteer attach to the Credential Request (not the Credential). They remain here permanently as an audit trail. See `docs/decisions/use-staging-object-for-intake.md`.

@@ -16,6 +16,26 @@ Implementation has not yet started. All tasks in the implementation plan are at 
 
 ---
 
+## 2026-02-24 - Phase 4: Staging Object and Review Gate
+
+Introduced `Credential_Request__c` as a staging layer between volunteer form submission and the authoritative `Credential__c` record.
+
+**Why:** The original Phase 3 design wrote volunteer-submitted data (Issued By, Expiry Date, file) directly onto the Credential record in a single step. This meant unverified data from an unauthenticated external submission immediately became part of the official credential record with no review gate. The staging object separates unverified intake data from the authoritative record, adds an admin review step, and preserves the original submission as an audit trail.
+
+**What changed:**
+- New object: `Credential_Request__c` (OWD ReadWrite, Auto-Number CRQ-{0000}). Fields: Credential lookup, Status picklist (Pending Review/Approved/Rejected), Issued By, Expiry Date.
+- New flow: `Credential_Request_Approval` - After Save record-triggered flow on Credential Request. Fires when Status changes to Approved; copies Issued By and Expiry Date to the linked Credential record.
+- Rewritten: `Credential_Intake_Form` flow - now creates a Credential Request before rendering the intake screen (so the file upload component has a recordId), writes submitted data to the staging record, and only updates the Credential Status to Under Review (not the field values).
+- Updated: Credential layout now shows a Credential Requests related list.
+
+**Trade-offs accepted:**
+- If a volunteer abandons the form after the pre-screen staging record creation, an empty Credential_Request__c record will exist. This is accepted in favour of correct file attachment behaviour.
+- Files stay on Credential_Request__c only; they are never moved to the Credential record.
+
+See `docs/decisions/use-staging-object-for-intake.md`.
+
+---
+
 ## 2026-02-23 - Phase 1 Complete: Data Model and Admin UI
 
 All Phase 1 tasks are done and committed as SFDX source metadata.
