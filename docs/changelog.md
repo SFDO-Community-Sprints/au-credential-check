@@ -16,6 +16,43 @@ Implementation has not yet started. All tasks in the implementation plan are at 
 
 ---
 
+## 2026-02-24 - Phase 5: LWC Alternative Submission Component
+
+Added a Lightning Web Component implementation of the credential intake form
+as an alternative to the Phase 3 Screen Flow. Targets LWR-based Experience
+Cloud sites where the screen flow may not be deployable. Both implementations
+coexist; neither replaces the other.
+
+**Why:** The Screen Flow runs in System Mode Without Sharing but relies on
+Salesforce Flow infrastructure and cannot be customised beyond what Flow
+components allow. An LWC provides the same behaviour as reusable component
+code with full control over layout, validation, and error handling.
+
+**What was added:**
+- New Apex class: `CredentialSubmissionController` (without sharing). Three
+  `@AuraEnabled` methods: `getCredentialByToken` (validates token, returns
+  state machine status), `submitCredential` (re-validates token, creates
+  Credential_Request__c, updates Credential status), `uploadFile` (creates
+  ContentVersion via base64 decode, validates requestId before accepting).
+- New Apex test class: `CredentialSubmissionControllerTest`. 8 test methods
+  covering all validation paths and happy paths.
+- New LWC: `credentialSubmissionForm`. 7-state state machine (LOADING,
+  INVALID_LINK, ALREADY_SUBMITTED, LINK_EXPIRED, FORM, SUBMITTING, SUCCESS).
+  Reads token via `@wire(CurrentPageReference)`. File upload uses a native
+  `<input type="file">` with FileReader base64 encoding. Sequential per-file
+  Apex calls to stay within heap limits.
+- Updated: `docs/architecture.md` (component map, LWC data flow section).
+
+**Key design decisions:**
+- Files uploaded as base64 via Apex to avoid guest user file upload permission
+  complications on LWR sites.
+- Collect-then-submit: volunteer fills out the full form before clicking Submit.
+  No orphan Credential_Request__c records if the user abandons mid-form.
+- Token re-validated server-side on submit to prevent replay attacks where the
+  link expires between page load and form submit.
+
+---
+
 ## 2026-02-24 - Phase 4: Staging Object and Review Gate
 
 Introduced `Credential_Request__c` as a staging layer between volunteer form submission and the authoritative `Credential__c` record.

@@ -2,7 +2,7 @@
 
 Live master plan for the Credential Intake System build. Update task statuses as work progresses. Note deviations and their reasons as they occur.
 
-**Last updated:** 2026-02-24 (Phase 4 added)
+**Last updated:** 2026-02-24 (Phase 5 added)
 
 ---
 
@@ -194,6 +194,68 @@ Introduces `Credential_Request__c` as a staging layer between volunteer submissi
 6. Confirm:
    - The approval flow fired.
    - `Credential__c.Issued_By__c` and `Credential__c.Expiry_Date__c` are now populated with the submitted values.
+
+---
+
+---
+
+## Phase 5 - LWC Alternative Submission Component
+
+Provides a Lightning Web Component implementation of the intake form as an
+alternative to the Phase 3 Screen Flow. Targets LWR-based Experience Cloud
+sites where the flow-based approach may not be deployable. Both solutions
+coexist; neither replaces the other. See `docs/decisions/` for context on
+the base64 file upload approach and the collect-then-submit pattern.
+
+| # | Task | Status | Notes |
+|---|---|---|---|
+| 5.1 | Create `CredentialSubmissionController.cls` (without sharing Apex) | done | Three `@AuraEnabled` methods: getCredentialByToken, submitCredential, uploadFile. Inner class CredentialInfo. Re-validates token in submitCredential to prevent replay. Validates requestId in uploadFile to prevent file misuse. |
+| 5.2 | Create `CredentialSubmissionControllerTest.cls` | done | 8 test methods covering all validation paths and happy paths for all three Apex methods. Uses @TestSetup with 3 Credential__c records (fresh, expired, already-submitted). |
+| 5.3 | Create `credentialSubmissionForm` LWC (html, js, css, js-meta.xml) | done | State machine with 7 states. File upload via native input + FileReader base64. Sequential file uploads to stay within Apex heap. Targets lightningCommunity__Page and lightningCommunity__Default. |
+| 5.4 | Deploy to `jerry@credentials.sfdo` and run Apex tests | todo | See verification steps in the plan document. |
+| 5.5 | Add component to LWR page and run end-to-end test | todo | See manual steps below. |
+
+### Manual steps - Phase 5
+
+**5-M1 - Deploy to org**
+
+```
+sf project deploy start -d force-app -o jerry@credentials.sfdo
+```
+
+**5-M2 - Run Apex tests**
+
+```
+sf apex run test -n CredentialSubmissionControllerTest -o jerry@credentials.sfdo
+```
+
+Confirm all 8 tests pass.
+
+**5-M3 - Add the LWC to an LWR page**
+
+1. Go to **Setup > Digital Experiences > All Sites**.
+2. Click **Workspaces** next to the credentials site, then open **Experience Builder**.
+3. Create a new page (or use an existing one). Note the URL path.
+4. In Experience Builder, drag the **Credential Submission Form** component onto the page canvas.
+5. The component reads the token from the URL automatically - no properties to configure.
+6. Save and publish the page.
+
+**5-M4 - End-to-end test** `todo`
+
+1. Create a Credential Type and Credential record, set Status to Requested.
+   Copy the Submission Link URL and replace the `/s/submit` path with the
+   path of the LWR page where the component is placed. Keep the `?id=` parameter.
+2. Open the link in an incognito browser. Confirm:
+   - Form loads showing the correct Credential Type name.
+   - Expiry Date field is hidden if Does Not Expire is checked.
+   - File picker allows selecting multiple files.
+3. Submit with valid data and one or more files. Confirm:
+   - `Credential_Request__c` created with Status = Pending Review, correct Issued By and Expiry Date.
+   - Files appear on the Credential Request Files related list.
+   - `Credential__c` Status = Under Review.
+   - Success screen displayed.
+4. Reload the same link. Confirm ALREADY_SUBMITTED screen.
+5. Test with a fabricated token. Confirm INVALID_LINK screen.
 
 ---
 

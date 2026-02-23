@@ -2,7 +2,7 @@
 
 ## Overview
 
-CredentialsCheck is a Salesforce-native credential intake and verification system. It is built entirely with declarative Salesforce tooling - custom objects, record-triggered flows, a screen flow, and an Experience Cloud site. There is no custom Apex code in the current design.
+CredentialsCheck is a Salesforce-native credential intake and verification system. It is built on custom objects, record-triggered flows, and an Experience Cloud site. The submission layer now has two parallel implementations: the original Intake Screen Flow and a Lightning Web Component (LWC) alternative for LWR-based Experience Cloud sites.
 
 ---
 
@@ -68,6 +68,22 @@ Currently targeting **API v65.0**. Update `sourceApiVersion` in `sfdx-project.js
 │  │  │    - Uploads file to Credential Request       │  │    │
 │  │  │    - Updates Credential Status to Under Review│  │    │
 │  │  └───────────────────────────────────────────────┘  │    │
+│  │                                                     │    │
+│  │  ┌───────────────────────────────────────────────┐  │    │
+│  │  │    credentialSubmissionForm LWC (LWR)         │  │    │
+│  │  │    - Reads ?id= token via CurrentPageReference│  │    │
+│  │  │    - Validates token via Apex (imperative)    │  │    │
+│  │  │    - Collects volunteer input                 │  │    │
+│  │  │    - Uploads files as base64 via Apex         │  │    │
+│  │  │    - Same Credential_Request__c outcome       │  │    │
+│  │  └───────────────────────────────────────────────┘  │    │
+│  │                    Both backed by                   │    │
+│  │  ┌───────────────────────────────────────────────┐  │    │
+│  │  │  CredentialSubmissionController (Apex)        │  │    │
+│  │  │  without sharing - guest user data proxy      │  │    │
+│  │  │  getCredentialByToken / submitCredential /    │  │    │
+│  │  │  uploadFile                                   │  │    │
+│  │  └───────────────────────────────────────────────┘  │    │
 │  └─────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -100,7 +116,36 @@ Currently targeting **API v65.0**. Update `sourceApiVersion` in `sfdx-project.js
 8. Flow writes `Issued_By__c` and `Expiry_Date__c` to the `Credential_Request__c` record.
 9. Flow updates `Credential__c.Status__c` to "Under Review". `Issued_By__c` and `Expiry_Date__c` on the Credential are NOT written - they remain blank until the request is approved.
 
-### Admin Approval
+### LWC Submission Path
+
+An alternative to the Intake Screen Flow. Both paths produce the same
+`Credential_Request__c` outcome; neither replaces the other.
+
+1. Volunteer opens the URL. LWR Experience Cloud loads the
+   `credentialSubmissionForm` component.
+2. `@wire(CurrentPageReference)` delivers the page reference; the component
+   extracts the `id` query parameter as the token.
+3. Component calls `CredentialSubmissionController.getCredentialByToken(token)`
+   imperatively. Apex queries `Credential__c WHERE Unique_Token__c = :token`
+   and evaluates the same three gates as the flow (no record, wrong status,
+   expired link). Returns a `CredentialInfo` wrapper with a status code.
+4. The LWC state machine transitions to `FORM`, `INVALID_LINK`,
+   `ALREADY_SUBMITTED`, or `LINK_EXPIRED` based on the returned status.
+5. Volunteer enters `Issued By`, `Expiry Date` (if applicable), and selects
+   files using a native `<input type="file">` element. JavaScript reads each
+   file as a base64 data URI via `FileReader`.
+6. Volunteer clicks Submit. The component re-validates inputs, then calls
+   `submitCredential(token, issuedBy, expiryDate)`. Apex re-validates the
+   token (second gate prevents replay), creates `Credential_Request__c`, and
+   updates `Credential__c.Status__c` to Under Review. Returns the new
+   `Credential_Request__c` Id.
+7. The component calls `uploadFile(requestId, fileName, base64Data)` once per
+   selected file, sequentially. Apex creates a `ContentVersion` per call with
+   `FirstPublishLocationId = requestId`; Salesforce auto-creates the
+   `ContentDocumentLink`.
+8. Component transitions to `SUCCESS` state.
+
+### Volunteer Form Submission (Screen Flow path)
 
 1. Admin opens the Credential record and navigates to the Credential Requests related list.
 2. Admin opens the `Credential_Request__c` record to review the submitted data and attached file.
