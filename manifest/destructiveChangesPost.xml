@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Post-deploy destructive changes for phase-4 token restructure.
+
+  DEFERRED - these components could not be removed automatically:
+
+  Credential__c.Unique_Token__c and Credential__c.Submission_Link__c are still
+  referenced by the Credential_Intake_Form screen flow's active version. They
+  can be deleted from the org once Credential_Intake_Form is updated to query
+  Credential_Request__c by token instead of Credential__c.
+
+  Credential_Token_Generation is superseded by Credential_Request_Creation but
+  has been left active in the org. It can be deactivated and deleted manually
+  via the Flow Builder UI in Setup once confirmed no longer needed.
+
+  See docs/todo.md for the full cleanup checklist.
+-->
+<Package xmlns="http://soap.sforce.com/2006/04/metadata">
+    <version>65.0</version>
+</Package>

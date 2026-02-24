@@ -13,7 +13,10 @@ Ongoing tasks and known gaps. Add items here rather than leaving TODOs scattered
 
 ### Data Model
 - Add a validation rule enforcing that at least one of Contact or Account is populated on a Credential record. Currently not enforced declaratively.
-- Confirm whether `Unique_Token__c` needs to be an Encrypted field (rather than plain Text) to prevent it appearing in debug logs or SOQL query results.
+- Confirm whether `Credential_Request__c.Unique_Token__c` needs to be an Encrypted field (rather than plain Text) to prevent it appearing in debug logs or SOQL query results.
+
+### Screen Flow
+- Update `Credential_Intake_Form` screen flow to query `Credential_Request__c WHERE Unique_Token__c = :id` instead of `Credential__c WHERE Unique_Token__c = :id`. The `Unique_Token__c` field was removed from `Credential__c` as part of the phase-4 token restructure; the screen flow will fail at runtime until it is updated. This is a UI change that must be done via the Flow Builder in Experience Builder or Setup.
 
 ### Security
 - Add a "Regenerate Token" action on the Credential record page. Currently, if a submission link is compromised, there is no way to invalidate it other than changing the Status (which resets the time window but not the token). A button that triggers a flow to regenerate `Unique_Token__c` would allow full revocation.

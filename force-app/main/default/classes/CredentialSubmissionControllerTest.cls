@@ -4,108 +4,100 @@
  * Tests behaviour, not implementation - each test verifies what the system does
  * for a given state of the data, not how the controller achieves it internally.
  *
- * Test data is created in @TestSetup so it is available to all test methods.
- * Each method runs in its own transaction; DML changes are rolled back after
- * the method completes, leaving the @TestSetup data unchanged for other methods.
+ * Test data strategy (post phase-4 restructure):
+ *   Tokens now live on Credential_Request__c, not Credential__c. Hard-coded
+ *   UUID-shaped tokens are inserted directly on Credential_Request__c records
+ *   in @TestSetup, so each test method can reference them by constant without
+ *   needing to query them back.
  *
- * The Credential_Token_Generation record-triggered flow fires After Insert and
- * populates Unique_Token__c on each Credential__c. Token values are therefore
- * not known at insert time and must be queried back via helper methods below.
+ *   Link expiry is based on Credential_Request__c.CreatedDate, which cannot be
+ *   set in Apex tests. The expired scenario is achieved by using a separate
+ *   Credential_Type__c with Link_Expiry_Days__c = -1: expiry = today - 1 day,
+ *   which is always in the past regardless of when the test runs.
+ *
+ * Each test method runs in its own transaction; DML changes are rolled back
+ * after the method completes, leaving the @TestSetup data unchanged.
  */
 @IsTest(SeeAllData=false)
 private class CredentialSubmissionControllerTest {
 
-    // Label used to identify the test Credential Type across methods.
+    // Label used to identify the standard test Credential Type across methods.
     private static final String TEST_TYPE_LABEL = 'Test Credential Type';
 
-    // Link expiry window applied to test records - long enough that
-    // fresh records are never accidentally expired during test execution.
+    // Link expiry for the normal credential type - long enough that records
+    // created in @TestSetup are never accidentally expired during test execution.
     private static final Integer LINK_EXPIRY_DAYS = 30;
 
-    // How far back to set Requested_Date__c for the expired credential
-    // test case. Double the expiry window ensures the link is definitively
-    // past its expiry regardless of execution timing.
-    private static final Integer EXPIRED_DAYS_AGO = 60;
+    // Hard-coded tokens inserted on the test Credential_Request__c records.
+    // UUID-shaped so they satisfy Text(36); clearly fake so they cannot
+    // collide with real org data.
+    private static final String FRESH_TOKEN     = '00000000-0000-0000-0000-000000000001';
+    private static final String SUBMITTED_TOKEN = '00000000-0000-0000-0000-000000000002';
+    private static final String EXPIRED_TOKEN   = '00000000-0000-0000-0000-000000000003';
 
     @TestSetup
     static void setupTestData() {
+        // Standard credential type used for the fresh and submitted scenarios.
         Credential_Type__c credType = new Credential_Type__c(
             Name                = TEST_TYPE_LABEL,
             Link_Expiry_Days__c = LINK_EXPIRY_DAYS,
             Does_Not_Expire__c  = false
         );
-        insert credType;
 
-        // Valid credential: Status = Requested, link is fresh.
-        // Requested_Date__c is set directly at insert because the Before Update
-        // flow that stamps it only fires on status change updates, not inserts.
+        // Credential type for the expiry scenario. Link_Expiry_Days__c = -1
+        // means expiry = CreatedDate - 1 day, which is always yesterday, so
+        // isLinkExpired always returns true without needing to control CreatedDate.
+        Credential_Type__c expiredCredType = new Credential_Type__c(
+            Name                = 'Expired Test Credential Type',
+            Link_Expiry_Days__c = -1,
+            Does_Not_Expire__c  = false
+        );
+
+        insert new List<Credential_Type__c>{ credType, expiredCredType };
+
+        // Credentials inserted with Status = Requested at insert time.
+        // The Credential_Request_Creation flow only fires on After Update,
+        // so inserting here does not create any unintended request records.
         Credential__c freshCredential = new Credential__c(
             Credential_Type__c = credType.Id,
-            Status__c          = 'Requested',
-            Requested_Date__c  = DateTime.now()
+            Status__c          = 'Requested'
         );
-        insert freshCredential;
-
-        // Already-submitted credential: Status is no longer Requested.
         Credential__c submittedCredential = new Credential__c(
             Credential_Type__c = credType.Id,
-            Status__c          = 'Under Review',
-            Requested_Date__c  = DateTime.now()
+            Status__c          = 'Requested'
         );
-        insert submittedCredential;
-
-        // Expired credential: Requested_Date__c is well outside the expiry window.
         Credential__c expiredCredential = new Credential__c(
-            Credential_Type__c = credType.Id,
-            Status__c          = 'Requested',
-            Requested_Date__c  = DateTime.now().addDays(-EXPIRED_DAYS_AGO)
+            Credential_Type__c = expiredCredType.Id,
+            Status__c          = 'Requested'
         );
-        insert expiredCredential;
-    }
 
-    /**
-     * Returns the Unique_Token__c for the fresh (valid, unexpired) credential.
-     * Queries by Status and a recent Requested_Date__c to distinguish it from
-     * the expired credential (also Status = Requested but with an old date).
-     */
-    private static String getFreshToken() {
-        Credential__c c = [
-            SELECT  Unique_Token__c
-            FROM    Credential__c
-            WHERE   Status__c = 'Requested'
-            AND     Requested_Date__c >= :DateTime.now().addDays(-1)
-            LIMIT   1
-        ];
-        return c.Unique_Token__c;
-    }
+        insert new List<Credential__c>{
+            freshCredential, submittedCredential, expiredCredential
+        };
 
-    /**
-     * Returns the Unique_Token__c for the expired credential.
-     * Queries by an old Requested_Date__c threshold.
-     */
-    private static String getExpiredToken() {
-        Credential__c c = [
-            SELECT  Unique_Token__c
-            FROM    Credential__c
-            WHERE   Status__c = 'Requested'
-            AND     Requested_Date__c <= :DateTime.now().addDays(-LINK_EXPIRY_DAYS)
-            LIMIT   1
-        ];
-        return c.Unique_Token__c;
-    }
-
-    /**
-     * Returns the Unique_Token__c for the already-submitted credential
-     * (Status = Under Review).
-     */
-    private static String getAlreadySubmittedToken() {
-        Credential__c c = [
-            SELECT  Unique_Token__c
-            FROM    Credential__c
-            WHERE   Status__c = 'Under Review'
-            LIMIT   1
-        ];
-        return c.Unique_Token__c;
+        // Request records inserted with hard-coded tokens to make token values
+        // predictable across all test methods.
+        //
+        // Fresh: Awaiting Submission - the standard valid state a volunteer sees.
+        // Submitted: Pending Review - simulates a request already actioned.
+        // Expired: Awaiting Submission but Credential_Type uses Link_Expiry_Days__c = -1.
+        insert new List<Credential_Request__c>{
+            new Credential_Request__c(
+                Credential__c   = freshCredential.Id,
+                Status__c       = 'Awaiting Submission',
+                Unique_Token__c = FRESH_TOKEN
+            ),
+            new Credential_Request__c(
+                Credential__c   = submittedCredential.Id,
+                Status__c       = 'Pending Review',
+                Unique_Token__c = SUBMITTED_TOKEN
+            ),
+            new Credential_Request__c(
+                Credential__c   = expiredCredential.Id,
+                Status__c       = 'Awaiting Submission',
+                Unique_Token__c = EXPIRED_TOKEN
+            )
+        };
     }
 
     // -------------------------------------------------------------------------
@@ -113,22 +105,20 @@ private class CredentialSubmissionControllerTest {
     // -------------------------------------------------------------------------
 
     /**
-     * A valid token on a Requested credential within the expiry window
+     * A valid token on an Awaiting Submission request within the expiry window
      * should return status = OK with all credential fields populated.
      */
     @IsTest
     static void getCredentialByToken_validUnexpiredToken_returnsOK() {
-        String token = getFreshToken();
-
         Test.startTest();
         CredentialSubmissionController.CredentialInfo info =
-            CredentialSubmissionController.getCredentialByToken(token);
+            CredentialSubmissionController.getCredentialByToken(FRESH_TOKEN);
         Test.stopTest();
 
         Assert.areEqual('OK', info.status,
             'Valid unexpired token should return OK status');
-        Assert.isNotNull(info.credentialId,
-            'credentialId should be populated on OK result');
+        Assert.isNotNull(info.requestId,
+            'requestId should be populated on OK result');
         Assert.areEqual(TEST_TYPE_LABEL, info.credentialType,
             'credentialType should match the test Credential Type label');
         Assert.isFalse(info.doesNotExpire,
@@ -136,12 +126,12 @@ private class CredentialSubmissionControllerTest {
     }
 
     /**
-     * A token that does not match any Credential__c record should return
-     * status = INVALID_LINK with no data fields populated.
+     * A token that does not match any Credential_Request__c record should
+     * return status = INVALID_LINK with no data fields populated.
      */
     @IsTest
     static void getCredentialByToken_unknownToken_returnsInvalidLink() {
-        // A well-formed GUID that is guaranteed not to match any test record
+        // A well-formed GUID that is guaranteed not to match any test record.
         String unknownToken = '00000000-0000-0000-0000-000000000000';
 
         Test.startTest();
@@ -151,42 +141,38 @@ private class CredentialSubmissionControllerTest {
 
         Assert.areEqual('INVALID_LINK', info.status,
             'Unknown token should return INVALID_LINK');
-        Assert.isNull(info.credentialId,
-            'credentialId should be null for an invalid link result');
+        Assert.isNull(info.requestId,
+            'requestId should be null for an invalid link result');
     }
 
     /**
-     * A token on a credential whose Status is no longer Requested should return
-     * status = ALREADY_SUBMITTED, regardless of the expiry date.
+     * A token on a request whose Status is no longer Awaiting Submission should
+     * return status = ALREADY_SUBMITTED, regardless of the expiry date.
      */
     @IsTest
-    static void getCredentialByToken_statusNotRequested_returnsAlreadySubmitted() {
-        String token = getAlreadySubmittedToken();
-
+    static void getCredentialByToken_requestAlreadyActioned_returnsAlreadySubmitted() {
         Test.startTest();
         CredentialSubmissionController.CredentialInfo info =
-            CredentialSubmissionController.getCredentialByToken(token);
+            CredentialSubmissionController.getCredentialByToken(SUBMITTED_TOKEN);
         Test.stopTest();
 
         Assert.areEqual('ALREADY_SUBMITTED', info.status,
-            'Non-Requested status should return ALREADY_SUBMITTED');
+            'Request with status Pending Review should return ALREADY_SUBMITTED');
     }
 
     /**
-     * A token on a credential whose Requested_Date__c is past the expiry
-     * window should return status = LINK_EXPIRED.
+     * A token on a request whose linked Credential_Type has Link_Expiry_Days__c = -1
+     * (i.e. always expired relative to today) should return status = LINK_EXPIRED.
      */
     @IsTest
-    static void getCredentialByToken_expiredRequestedDate_returnsLinkExpired() {
-        String token = getExpiredToken();
-
+    static void getCredentialByToken_negativeExpiryDays_returnsLinkExpired() {
         Test.startTest();
         CredentialSubmissionController.CredentialInfo info =
-            CredentialSubmissionController.getCredentialByToken(token);
+            CredentialSubmissionController.getCredentialByToken(EXPIRED_TOKEN);
         Test.stopTest();
 
         Assert.areEqual('LINK_EXPIRED', info.status,
-            'Expired Requested_Date__c should return LINK_EXPIRED');
+            'Request on a credential type with Link_Expiry_Days__c = -1 should return LINK_EXPIRED');
     }
 
     // -------------------------------------------------------------------------
@@ -194,23 +180,22 @@ private class CredentialSubmissionControllerTest {
     // -------------------------------------------------------------------------
 
     /**
-     * A valid submission should create a Credential_Request__c with the
+     * A valid submission should update the Credential_Request__c with the
      * submitted values, update the Credential Status to Under Review, and
-     * return the new request Id.
+     * return the request Id.
      */
     @IsTest
-    static void submitCredential_validToken_createsRequestAndUpdatesCredential() {
-        String token         = getFreshToken();
-        String issuedBy      = 'Queensland Police';
-        Date   expiry        = Date.today().addYears(1);
+    static void submitCredential_validToken_updatesRequestAndCredential() {
+        String issuedBy = 'Queensland Police';
+        Date   expiry   = Date.today().addYears(1);
 
         Test.startTest();
         String requestId = CredentialSubmissionController.submitCredential(
-            token, issuedBy, expiry
+            FRESH_TOKEN, issuedBy, expiry
         );
         Test.stopTest();
 
-        Assert.isNotNull(requestId, 'submitCredential should return the new request Id');
+        Assert.isNotNull(requestId, 'submitCredential should return the request Id');
 
         Credential_Request__c request = [
             SELECT Credential__c, Status__c, Issued_By__c, Expiry_Date__c
@@ -218,7 +203,7 @@ private class CredentialSubmissionControllerTest {
             WHERE  Id = :requestId
         ];
         Assert.areEqual('Pending Review', request.Status__c,
-            'New request Status should be Pending Review');
+            'Request Status should be updated to Pending Review');
         Assert.areEqual(issuedBy, request.Issued_By__c,
             'Issued_By__c should match the submitted value');
         Assert.areEqual(expiry, request.Expiry_Date__c,
@@ -227,24 +212,22 @@ private class CredentialSubmissionControllerTest {
         Credential__c credential = [
             SELECT Status__c
             FROM   Credential__c
-            WHERE  Unique_Token__c = :token
+            WHERE  Id = :request.Credential__c
         ];
         Assert.areEqual('Under Review', credential.Status__c,
             'Credential Status should be Under Review after a successful submission');
     }
 
     /**
-     * Submitting with a token whose Credential is no longer Requested (stale
-     * between page load and form submit) should throw AuraHandledException.
+     * Submitting with a token whose request is no longer Awaiting Submission
+     * (stale between page load and form submit) should throw AuraHandledException.
      */
     @IsTest
     static void submitCredential_staleToken_throwsAuraHandledException() {
-        String token = getAlreadySubmittedToken();
-
         Boolean exceptionThrown = false;
         Test.startTest();
         try {
-            CredentialSubmissionController.submitCredential(token, 'Test Issuer', null);
+            CredentialSubmissionController.submitCredential(SUBMITTED_TOKEN, 'Test Issuer', null);
         } catch (AuraHandledException e) {
             exceptionThrown = true;
         }
@@ -270,7 +253,6 @@ private class CredentialSubmissionControllerTest {
             SELECT Id
             FROM   Credential__c
             WHERE  Status__c = 'Requested'
-            AND    Requested_Date__c >= :DateTime.now().addDays(-1)
             LIMIT  1
         ];
         Credential_Request__c request = new Credential_Request__c(

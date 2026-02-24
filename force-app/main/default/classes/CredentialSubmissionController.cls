@@ -7,18 +7,28 @@
  * Credential_Intake_Form screen flow which runs in System Context Without Sharing.
  *
  * Security controls applied at the application layer instead:
- *   - All read/write operations are gated by the Unique_Token__c value from the URL.
- *   - submitCredential re-validates the token before any DML to prevent replay if
- *     the link expires between page load and form submit.
+ *   - All read/write operations are gated by the Unique_Token__c value on
+ *     Credential_Request__c. The token is embedded in the URL and treated as
+ *     the single credential for this anonymous submission session.
+ *   - submitCredential re-validates the token before any DML to prevent replay
+ *     if the link expires between page load and form submit.
  *   - uploadFile validates that requestId is a real Credential_Request__c before
  *     accepting file data.
  *   - No Salesforce record IDs are exposed to the browser except the
  *     Credential_Request__c Id returned after a successful submit (required for
  *     file attachment).
  *
+ * Token ownership model (post phase-4 restructure):
+ *   Unique_Token__c lives on Credential_Request__c, not Credential__c.
+ *   Each time a Credential__c transitions to Status = Requested, the
+ *   Credential_Request_Creation flow creates a new Credential_Request__c with a
+ *   fresh UUID token and Status = Awaiting Submission. This controller queries
+ *   Credential_Request__c by token rather than Credential__c, so each link is
+ *   tied to exactly one request record.
+ *
  * Does not own: Experience Cloud site configuration, Guest User profile
- * permissions, or the approval flow that fires when Credential_Request__c
- * Status__c changes to Approved.
+ * permissions, or the Credential_Request_Approval flow that fires when
+ * Credential_Request__c Status__c changes to Approved.
  */
 public without sharing class CredentialSubmissionController {
 
@@ -29,13 +39,16 @@ public without sharing class CredentialSubmissionController {
     private static final String STATUS_ALREADY_SUBMITTED = 'ALREADY_SUBMITTED';
     private static final String STATUS_LINK_EXPIRED      = 'LINK_EXPIRED';
 
-    // Credential__c.Status__c picklist values relevant to submission gating.
-    // 'Requested' is the only status that permits a new submission.
+    // Credential__c.Status__c value that permits a new submission.
     private static final String CREDENTIAL_STATUS_REQUESTED    = 'Requested';
     private static final String CREDENTIAL_STATUS_UNDER_REVIEW = 'Under Review';
 
-    // Credential_Request__c.Status__c initial value written on creation.
-    private static final String REQUEST_STATUS_PENDING_REVIEW = 'Pending Review';
+    // Credential_Request__c.Status__c picklist values for the submission lifecycle.
+    // 'Awaiting Submission' is written by the Credential_Request_Creation flow
+    // when the parent Credential transitions to Requested.
+    // 'Pending Review' is written by this class on a successful volunteer submit.
+    private static final String REQUEST_STATUS_AWAITING_SUBMISSION = 'Awaiting Submission';
+    private static final String REQUEST_STATUS_PENDING_REVIEW      = 'Pending Review';
 
     /**
      * Wrapper returned from getCredentialByToken to the LWC.
@@ -52,8 +65,12 @@ public without sharing class CredentialSubmissionController {
          */
         @AuraEnabled public String status;
 
-        /** Salesforce Id of the matched Credential__c. Null unless status = OK. */
-        @AuraEnabled public String credentialId;
+        /**
+         * Salesforce Id of the matched Credential_Request__c. Null unless
+         * status = OK. Not currently used by the LWC (submit re-validates by
+         * token) but exposed for potential future use without an API change.
+         */
+        @AuraEnabled public String requestId;
 
         /**
          * Display label for the credential type (Credential_Type__r.Name).
@@ -70,8 +87,8 @@ public without sharing class CredentialSubmissionController {
     }
 
     /**
-     * Looks up a Credential__c by its access token and returns the validation
-     * result so the LWC can enter the appropriate state on load.
+     * Looks up a Credential_Request__c by its access token and returns the
+     * validation result so the LWC can enter the appropriate state on load.
      *
      * Called imperatively (not via @wire) from the LWC because guest users on
      * LWR Experience Cloud sites cannot use @wire callouts reliably.
@@ -79,62 +96,73 @@ public without sharing class CredentialSubmissionController {
      * @param token  The GUID from the ?id= URL parameter. Used as a SOQL bind
      *               variable - never concatenated into the query string.
      * @return       CredentialInfo with status = OK and populated fields when the
-     *               link is valid and unused; otherwise status = INVALID_LINK,
-     *               ALREADY_SUBMITTED, or LINK_EXPIRED with all data fields null.
+     *               request is awaiting submission and the link is unexpired;
+     *               otherwise status = INVALID_LINK, ALREADY_SUBMITTED, or
+     *               LINK_EXPIRED with all data fields null.
      * @example
      *   CredentialInfo info = CredentialSubmissionController.getCredentialByToken('abc-def');
      *   if (info.status == 'OK') { System.debug(info.credentialType); }
      */
     @AuraEnabled
     public static CredentialInfo getCredentialByToken(String token) {
-        List<Credential__c> records = [
+        List<Credential_Request__c> requests = [
             SELECT  Id,
                     Status__c,
-                    Requested_Date__c,
-                    Credential_Type__c,
-                    Credential_Type__r.Name,
-                    Credential_Type__r.Link_Expiry_Days__c,
-                    Credential_Type__r.Does_Not_Expire__c
-            FROM    Credential__c
+                    CreatedDate,
+                    Credential__c,
+                    Credential__r.Status__c,
+                    Credential__r.Credential_Type__r.Name,
+                    Credential__r.Credential_Type__r.Link_Expiry_Days__c,
+                    Credential__r.Credential_Type__r.Does_Not_Expire__c
+            FROM    Credential_Request__c
             WHERE   Unique_Token__c = :token
             LIMIT   1
         ];
 
-        if (records.isEmpty()) {
+        if (requests.isEmpty()) {
             return buildErrorInfo(STATUS_INVALID_LINK);
         }
 
-        Credential__c credential = records[0];
+        Credential_Request__c request = requests[0];
 
-        if (credential.Status__c != CREDENTIAL_STATUS_REQUESTED) {
+        // Both conditions are checked to handle edge cases where the request or
+        // credential status was manually modified. The primary guard is the
+        // request status because that is the value this controller controls.
+        if (request.Status__c != REQUEST_STATUS_AWAITING_SUBMISSION
+                || request.Credential__r.Status__c != CREDENTIAL_STATUS_REQUESTED) {
             return buildErrorInfo(STATUS_ALREADY_SUBMITTED);
         }
 
-        if (isLinkExpired(credential)) {
+        if (isLinkExpired(request)) {
             return buildErrorInfo(STATUS_LINK_EXPIRED);
         }
 
-        CredentialInfo info    = new CredentialInfo();
-        info.status            = STATUS_OK;
-        info.credentialId      = credential.Id;
-        info.credentialType    = credential.Credential_Type__r.Name;
-        info.doesNotExpire     = credential.Credential_Type__r.Does_Not_Expire__c;
+        CredentialInfo info  = new CredentialInfo();
+        info.status          = STATUS_OK;
+        info.requestId       = request.Id;
+        info.credentialType  = request.Credential__r.Credential_Type__r.Name;
+        info.doesNotExpire   = request.Credential__r.Credential_Type__r.Does_Not_Expire__c;
         return info;
     }
 
     /**
-     * Creates a Credential_Request__c staging record and updates the linked
-     * Credential__c status to Under Review.
+     * Updates the Credential_Request__c with the volunteer's submission data
+     * and marks the parent Credential__c as Under Review.
      *
      * Re-validates the token before any DML so that a submission attempt on an
      * expired or already-used link is rejected even if the page loaded earlier
      * when the link was still valid.
      *
-     * @param token       The GUID from the URL - identifies the Credential__c.
+     * In the new token model the Credential_Request__c already exists (created
+     * by the Credential_Request_Creation flow). This method updates it rather
+     * than creating a new one, so the request Id is stable across the page load
+     * and submit lifecycle.
+     *
+     * @param token       The GUID from the URL - identifies the Credential_Request__c.
      * @param issuedBy    Free-text name of the issuing authority or organisation.
      * @param expiryDate  Date the credential expires. Null for non-expiring types.
-     * @return            The Id of the new Credential_Request__c, which the LWC
-     *                    passes to uploadFile for each selected file.
+     * @return            The Id of the updated Credential_Request__c, which the
+     *                    LWC passes to uploadFile for each selected file.
      * @throws AuraHandledException  If the token is no longer valid or DML fails.
      *                               The message is safe to surface in the UI.
      * @example
@@ -143,45 +171,52 @@ public without sharing class CredentialSubmissionController {
      */
     @AuraEnabled
     public static String submitCredential(String token, String issuedBy, Date expiryDate) {
-        List<Credential__c> records = [
+        List<Credential_Request__c> requests = [
             SELECT  Id,
                     Status__c,
-                    Requested_Date__c,
-                    Credential_Type__r.Link_Expiry_Days__c,
-                    Credential_Type__r.Does_Not_Expire__c
-            FROM    Credential__c
+                    CreatedDate,
+                    Credential__c,
+                    Credential__r.Status__c,
+                    Credential__r.Credential_Type__r.Link_Expiry_Days__c
+            FROM    Credential_Request__c
             WHERE   Unique_Token__c = :token
             LIMIT   1
         ];
 
-        if (records.isEmpty()) {
+        if (requests.isEmpty()) {
             throw new AuraHandledException(
                 'This link is not valid. Please contact your administrator.'
             );
         }
 
-        Credential__c credential = records[0];
+        Credential_Request__c request = requests[0];
 
-        if (credential.Status__c != CREDENTIAL_STATUS_REQUESTED) {
+        if (request.Status__c != REQUEST_STATUS_AWAITING_SUBMISSION
+                || request.Credential__r.Status__c != CREDENTIAL_STATUS_REQUESTED) {
             throw new AuraHandledException('This form has already been submitted.');
         }
 
-        if (isLinkExpired(credential)) {
+        if (isLinkExpired(request)) {
             throw new AuraHandledException(
                 'This link has expired. Please contact your administrator to request a new link.'
             );
         }
 
         try {
-            Credential_Request__c request = new Credential_Request__c(
-                Credential__c  = credential.Id,
-                Status__c      = REQUEST_STATUS_PENDING_REVIEW,
-                Issued_By__c   = issuedBy,
-                Expiry_Date__c = expiryDate
-            );
-            insert request;
+            // Update the existing request rather than creating a new one.
+            // The Credential_Request_Creation flow already set up this record;
+            // we fill in the volunteer's data and advance the status.
+            request.Status__c      = REQUEST_STATUS_PENDING_REVIEW;
+            request.Issued_By__c   = issuedBy;
+            request.Expiry_Date__c = expiryDate;
+            update request;
 
-            credential.Status__c = CREDENTIAL_STATUS_UNDER_REVIEW;
+            // Use an Id-only sObject to avoid querying the credential again
+            // just to set one field.
+            Credential__c credential = new Credential__c(
+                Id        = request.Credential__c,
+                Status__c = CREDENTIAL_STATUS_UNDER_REVIEW
+            );
             update credential;
 
             return request.Id;
@@ -273,25 +308,23 @@ public without sharing class CredentialSubmissionController {
     }
 
     /**
-     * Determines whether the submission link for a credential has passed its
-     * expiry date.
+     * Determines whether the submission link has passed its expiry date.
      *
-     * Expiry is calculated as: Requested_Date__c.date() + Link_Expiry_Days__c days.
-     * A null Requested_Date__c is treated as expired because the link timer was
-     * never started, meaning the link should not have been distributed yet.
-     * The cast to Integer is safe because Link_Expiry_Days__c is a required Number
-     * field on the object.
+     * Expiry is calculated from the Credential_Request__c CreatedDate rather
+     * than a separate date field - the request is created by the flow at the
+     * same moment the admin sets Status = Requested, so CreatedDate is the
+     * natural start of the expiry window.
      *
-     * @param credential  Credential__c with Requested_Date__c and
-     *                    Credential_Type__r.Link_Expiry_Days__c populated.
-     * @return            True if the link has expired or Requested_Date__c is null.
+     * The cast to Integer is safe because Link_Expiry_Days__c is a required
+     * Number field on Credential_Type__c.
+     *
+     * @param request  Credential_Request__c with CreatedDate and
+     *                 Credential__r.Credential_Type__r.Link_Expiry_Days__c populated.
+     * @return         True if today is past the expiry date.
      */
-    private static Boolean isLinkExpired(Credential__c credential) {
-        if (credential.Requested_Date__c == null) {
-            return true;
-        }
-        Integer expiryDays = (Integer) credential.Credential_Type__r.Link_Expiry_Days__c;
-        Date    expiryDate = credential.Requested_Date__c.date().addDays(expiryDays);
+    private static Boolean isLinkExpired(Credential_Request__c request) {
+        Integer expiryDays = (Integer) request.Credential__r.Credential_Type__r.Link_Expiry_Days__c;
+        Date    expiryDate = request.CreatedDate.date().addDays(expiryDays);
         return Date.today() > expiryDate;
     }
 }
