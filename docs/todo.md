@@ -16,7 +16,11 @@ Ongoing tasks and known gaps. Add items here rather than leaving TODOs scattered
 - Confirm whether `Credential_Request__c.Unique_Token__c` needs to be an Encrypted field (rather than plain Text) to prevent it appearing in debug logs or SOQL query results.
 
 ### Screen Flow
-- Update `Credential_Intake_Form` screen flow to query `Credential_Request__c WHERE Unique_Token__c = :id` instead of `Credential__c WHERE Unique_Token__c = :id`. The `Unique_Token__c` field was removed from `Credential__c` as part of the phase-4 token restructure; the screen flow will fail at runtime until it is updated. This is a UI change that must be done via the Flow Builder in Experience Builder or Setup.
+- Update `Credential_Intake_Form` screen flow to query `Credential_Request__c WHERE Unique_Token__c = :id` instead of `Credential__c WHERE Unique_Token__c = :id`. The token was moved to `Credential_Request__c` in the phase-4 restructure; the screen flow will fail at runtime until it is updated. This is a UI change done via Flow Builder in Setup.
+- Once `Credential_Intake_Form` is updated, delete the now-redundant `Credential__c.Unique_Token__c` and `Credential__c.Submission_Link__c` fields (they cannot be deleted while the flow references them). Also deactivate and delete the legacy `Credential_Token_Generation` After Insert flow (which populated the old `Credential__c.Unique_Token__c` field).
+
+### Cleanup
+- `manifest/destructiveChangesPost.xml` documents the three items blocked from deletion: `Credential__c.Unique_Token__c`, `Credential__c.Submission_Link__c`, and `Credential_Token_Generation` flow. Once the `Credential_Intake_Form` screen flow is updated and the references removed, redeploy the destructive changes manifest to remove these artefacts from the org.
 
 ### Security
 - Add a "Regenerate Token" action on the Credential record page. Currently, if a submission link is compromised, there is no way to invalidate it other than changing the Status (which resets the time window but not the token). A button that triggers a flow to regenerate `Unique_Token__c` would allow full revocation.
@@ -24,7 +28,6 @@ Ongoing tasks and known gaps. Add items here rather than leaving TODOs scattered
 - Confirm how files uploaded by the guest user are associated in Salesforce's file ownership model and whether this affects access controls.
 
 ### Flow
-- Confirm the mechanism for generating the GUID in the Token Generation Flow. Salesforce does not have a native GUID formula function. An Apex invocable action may be required. Research options: `UUID.randomUUID()` in Apex, or a flow formula workaround.
 - Rate limiting on the intake form is not implemented. If abuse is a concern, consider adding an Apex invocable action to detect and reject repeated invalid token attempts from the same IP.
 
 ### Future Features

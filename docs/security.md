@@ -9,7 +9,7 @@ The system has two distinct trust zones:
 | Internal (Salesforce) | Admins with a Salesforce login | Standard Salesforce authentication and profile/permission set model |
 | External (Experience Cloud) | Volunteers with no Salesforce account | GUID token in the submission URL |
 
-Data never moves from the external zone into Salesforce directly. The Intake Screen Flow acts as a controlled proxy - it reads and writes on behalf of the guest user using System Mode, and only operates on the specific Credential record that matches the submitted token.
+Data never moves from the external zone into Salesforce directly. The Intake Screen Flow and `CredentialSubmissionController` Apex class act as controlled proxies - they read and write on behalf of the guest user and only operate on the specific `Credential_Request__c` that matches the submitted token.
 
 ---
 
@@ -30,10 +30,20 @@ OWD for `Credential_Request__c` is **ReadWrite**. This is acceptable because `Cr
 
 The Guest User Profile for the Experience Cloud site is configured with:
 - **Zero object permissions** - no read, create, edit, or delete access to any object
-- **Run Flows** system permission enabled
+- **Flow access granted per-flow** via the flow's individual access settings (see below)
 - No access to any Salesforce data directly
 
-All data access for the form is performed by the Intake Screen Flow running in **System Context Without Sharing**. The flow validates the token before doing anything, so it acts as a narrow, controlled gate.
+**Guest user flow access:** Salesforce removed the "Run Flows" system permission from Guest User Profiles. Flow access for guest users must now be granted individually per flow. To allow the Intake Screen Flow to run for unauthenticated visitors:
+
+1. Go to **Setup > Flows**.
+2. Open the dropdown next to `Credential_Intake_Form` and select **Edit Access**.
+3. Change to **"Override default behavior and restrict access to enabled profiles or permission sets"**.
+4. Add the site's **Guest User Profile** (e.g. `credentials Profile`) to the Enabled Profiles list.
+5. Save.
+
+This must be repeated for any additional flows that need guest access. The `credentialSubmissionForm` LWC calls Apex directly rather than invoking a flow, so no additional flow access is required for the LWC path.
+
+All data access for the form is performed by either the Intake Screen Flow (running in **System Context Without Sharing**) or the `CredentialSubmissionController` Apex class (declared `without sharing`). Both validate the token before reading or writing any data. The Apex class additionally validates the `requestId` parameter before accepting file uploads, preventing files from being attached to arbitrary records.
 
 ---
 
@@ -72,6 +82,8 @@ This limits the vulnerability window for any compromised or forwarded link.
 
 A validation rule on `Credential__c` blocks the Status from being set to "Active" unless `Sighted__c` is TRUE. This ensures no credential can be activated without an admin reviewing and confirming the uploaded document.
 
+In normal operation, the `Credential_Request_Approval` flow sets both `Sighted__c = true` and `Status__c = Active` in the same DML operation when an admin approves a request, satisfying the validation rule automatically. The rule acts as a safety net against manual edits that would bypass the review step.
+
 ### Field History Tracking
 
 `Sighted__c` has Field History Tracking enabled. All changes to this field are recorded with the user, timestamp, and old/new value. This provides an audit trail for credential verification.
@@ -94,4 +106,4 @@ A validation rule on `Credential__c` blocks the Status from being set to "Active
 - The submission link itself is not encrypted in transit beyond standard HTTPS. The link should be treated as a credential - whoever holds it can submit to that specific Credential record during the validity window.
 - The system does not revoke links automatically when a link is forwarded or shared. Because the token lives on `Credential_Request__c`, an admin can invalidate a link by setting the request Status to Rejected (which blocks the ALREADY_SUBMITTED gate) or by setting the parent Credential Status back to Draft and then to Requested again, which creates a new `Credential_Request__c` with a fresh token.
 - Files uploaded via the Guest User context are associated with the guest user in Salesforce's system user model. Confirm that your org's file access policies handle this appropriately.
-- The Screen Flow runs Without Sharing. This is intentional and required for the guest user pattern to work. The tradeoff is documented in `docs/decisions/use-screen-flow-in-system-mode.md`.
+- The Screen Flow runs Without Sharing and `CredentialSubmissionController` is declared `without sharing`. This is intentional and required for the guest user pattern to work. The tradeoff is documented in `docs/decisions/use-screen-flow-in-system-mode.md` and in the `CredentialSubmissionController` class comment.

@@ -35,6 +35,21 @@ private class CredentialSubmissionControllerTest {
     private static final String SUBMITTED_TOKEN = '00000000-0000-0000-0000-000000000002';
     private static final String EXPIRED_TOKEN   = '00000000-0000-0000-0000-000000000003';
 
+    /**
+     * Creates shared test data used by all test methods in this class.
+     *
+     * Creates two Credential_Type__c records:
+     *   - Standard type (30-day expiry window) for the fresh and submitted scenarios.
+     *   - Expired type (Link_Expiry_Days__c = -1) so any request on this type is
+     *     always considered expired relative to today, without needing to control CreatedDate.
+     *
+     * Creates three Credential__c records (Status = Requested) and three
+     * Credential_Request__c records with hard-coded UUID-format tokens so
+     * each test method can reference the token by constant without a query.
+     *
+     * Each test method runs in its own transaction. DML in test methods does not
+     * affect the @TestSetup data visible to other methods.
+     */
     @TestSetup
     static void setupTestData() {
         // Standard credential type used for the fresh and submitted scenarios.

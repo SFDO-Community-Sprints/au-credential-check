@@ -2,7 +2,7 @@
 
 Live master plan for the Credential Intake System build. Update task statuses as work progresses. Note deviations and their reasons as they occur.
 
-**Last updated:** 2026-02-24 (Phase 5 added)
+**Last updated:** 2026-02-24 (Phase 5 complete; token restructure documented)
 
 ---
 
@@ -24,8 +24,8 @@ Live master plan for the Credential Intake System build. Update task statuses as
 | 1.12 | Add `Issued_By__c` Text field to Credential | done | |
 | 1.13 | Add `Expiry_Date__c` Date field to Credential | done | |
 | 1.14 | Add `Sighted__c` Checkbox field to Credential | done | `trackHistory=true` set on field. |
-| 1.15 | Add `Unique_Token__c` Text field to Credential (hidden from standard layouts) | done | Length 36 (GUID format). Unique=true. Excluded from layout. |
-| 1.16 | Add `Submission_Link__c` Formula (Text) field to Credential | done | Contains URL placeholder - update in Phase 2 task 2.5. |
+| 1.15 | Add `Unique_Token__c` Text field to Credential (hidden from standard layouts) | done | Length 36 (GUID format). Unique=true. Excluded from layout. Deprecated - token now lives on Credential_Request__c. Field retained for compatibility with legacy Credential_Intake_Form flow. |
+| 1.16 | Add `Submission_Link__c` Formula (Text) field to Credential | done | Deprecated - link formula now lives on Credential_Request__c. Field retained for compatibility with legacy Credential_Intake_Form flow. |
 | 1.17 | Add validation rule: block Status = Active if Sighted__c = FALSE | done | Error displayed on Status__c field. Uses ISPICKVAL. |
 | 1.18 | Enable Field History Tracking on `Sighted__c` | done | `enableHistory=true` on object, `trackHistory=true` on field. |
 | 1.19 | Configure Lightning Record Page for Credential | done | Flexipage with header (highlights), tabs (Details, Activity, Related). |
@@ -59,7 +59,7 @@ The Credential and Credential Type tabs were deployed but are not visible in any
 
 | # | Task | Status | Notes |
 |---|---|---|---|
-| 2.1 | Build Record-Triggered Flow: generate GUID into `Unique_Token__c` on Credential creation (After Insert) | done | `GenerateUUID` Apex invocable action + `Credential_Token_Generation` After Insert flow. 3/3 Apex tests passing. |
+| 2.1 | Build Record-Triggered Flow: generate GUID on Credential creation | done | `GenerateUUID` Apex invocable action (Crypto.generateAesKey(128)) + `Credential_Token_Generation` After Insert flow. Originally populated `Unique_Token__c` on `Credential__c`. Superseded by `Credential_Request_Creation` flow (Phase 4 restructure). Flow remains active in org pending `Credential_Intake_Form` update. |
 | 2.2 | Build Record-Triggered Flow (Before Update): stamp `Requested_Date__c` when Status changes to "Requested" | done | `Credential_Requested_Date_Stamp` Before Save flow. Decision element guards against re-stamping on re-saves. |
 | 2.3 | Create unauthenticated Experience Cloud site | done | Site exists at `https://sl1771816777101.my.site.com/credentials`. |
 | 2.4 | Configure Guest User access to the Intake Flow and confirm zero object permissions | todo | UI task - see manual steps below. |
@@ -69,14 +69,16 @@ The Credential and Credential Type tabs were deployed but are not visible in any
 
 **2-M1 - Grant the Guest User access to the Intake Flow** `todo`
 
-Salesforce removed the "Run Flows" system permission from Guest User Profiles in Spring '23. Access is now granted per-flow individually via the flow's own access settings.
+Salesforce removed the "Run Flows" system permission from Guest User Profiles. Flow access for guest users is now granted per-flow via the flow's individual access settings.
 
 1. Go to **Setup > Flows**.
-2. Find **Credential - Intake Form** in the list.
+2. Find **Credential_Intake_Form** in the list.
 3. Click the dropdown arrow next to the flow and select **Edit Access**.
 4. Change the setting to **"Override default behavior and restrict access to enabled profiles or permission sets"**.
-5. In the Enabled Profiles list, add the **Guest User Profile** for the credentials site (named something like `credentials Profile`).
+5. In the Enabled Profiles list, add the **Guest User Profile** for the credentials site (e.g. `credentials Profile`).
 6. Save.
+
+Note: the `credentialSubmissionForm` LWC calls Apex directly and does not invoke a flow, so no additional flow access is needed for the LWC path.
 
 **2-M2 - Confirm Guest User Profile has no object permissions** `todo`
 
@@ -143,19 +145,19 @@ Full walkthrough to verify the system works before signing off. Run after all ma
 2. Create a **Credential** record:
    - Credential Type: the record created above
    - Leave Status as `Draft`
-   - Save and confirm `Unique_Token__c` is populated (visible in field history or via SOQL).
-3. Change Status to `Requested` and save. Confirm `Requested_Date__c` is stamped.
-4. On the Highlights Panel, copy the **Submission Link** value.
-5. Open the link in an **incognito/private browser window** (to simulate the guest user experience). Confirm the intake form loads.
-6. Fill in **Issued By**, set an **Expiry Date**, and upload a `.pdf` file. Click **Submit**.
-7. Confirm the success screen is shown.
-8. Back in the org, open the Credential record and confirm:
-   - Status is `Under Review`
-   - `Issued_By__c` and `Expiry_Date__c` are populated
-   - A file is visible in the Files related list
-9. Test invalid paths in a browser:
-   - Open the submission link again - confirm "Already Submitted" screen.
-   - Manually construct a URL with a fake token - confirm "Invalid Link" screen.
+   - Save.
+3. Change Status to `Requested` and save. Confirm `Requested_Date__c` is stamped on the Credential.
+4. Navigate to the **Credential Requests related list** on the Credential record. Confirm a new Credential Request was created with Status = Awaiting Submission.
+5. Open the Credential Request and copy the **Submission Link** from the highlights panel.
+6. Open the link in an **incognito/private browser window** (to simulate the guest user experience). Confirm the intake form loads.
+7. Fill in **Issued By**, set an **Expiry Date**, and upload a `.pdf` file. Click **Submit**.
+8. Confirm the success screen is shown.
+9. Back in the org, confirm:
+   - The **Credential** Status is `Under Review`. `Issued_By__c` and `Expiry_Date__c` on the Credential are **blank** (not yet promoted from the request).
+   - The **Credential Request** Status is `Pending Review`. `Issued_By__c` and `Expiry_Date__c` on the request are populated. The uploaded file is in the Files related list on the request.
+10. Test invalid paths in a browser:
+    - Open the submission link again - confirm "Already Submitted" screen.
+    - Manually construct a URL with a fake token - confirm "Invalid Link" screen.
 
 ---
 
@@ -169,12 +171,12 @@ Introduces `Credential_Request__c` as a staging layer between volunteer submissi
 |---|---|---|---|
 | 4.1 | Create `Credential_Request__c` custom object (Auto-Number CRQ-{0000}, OWD ReadWrite) | done | |
 | 4.2 | Add `Credential__c` Lookup field to Credential Request (required, deleteConstraint: Restrict) | done | |
-| 4.3 | Add `Status__c` Picklist field (Pending Review default, Approved, Rejected) | done | Restricted picklist - approval flow checks for exact "Approved" value. |
+| 4.3 | Add `Status__c` Picklist field (Awaiting Submission, Pending Review, Approved, Rejected) | done | Restricted picklist. Awaiting Submission is the default set by the Request Creation flow. Approval flow checks for exact "Approved" value. |
 | 4.4 | Add `Issued_By__c` Text (255) field to Credential Request | done | Not required - field may be blank if volunteer abandons after staging record is created. |
 | 4.5 | Add `Expiry_Date__c` Date field to Credential Request | done | Not required - blank is correct for non-expiring credential types. |
 | 4.6 | Create compact layout `Credential_Request_Highlights` | done | Fields: Name, Status__c, Credential__c, Issued_By__c, Expiry_Date__c. |
 | 4.7 | Create standard layout for Credential Request | done | Status is editable (admin action); Issued_By and Expiry_Date are read-only to preserve submission integrity. |
-| 4.8 | Build `Credential_Request_Approval` record-triggered flow (After Save, Update) | done | Fires on Status = Approved. Guards against re-fire on re-saves. Copies Issued_By and Expiry_Date to linked Credential. |
+| 4.8 | Build `Credential_Request_Approval` record-triggered flow (After Save, Update) | done | Fires on Status = Approved. Guards against re-fire on re-saves. Copies Issued_By and Expiry_Date to linked Credential, and sets Sighted = true + Status = Active in the same DML operation (required by Block_Activation_Without_Sighting validation rule). |
 | 4.9 | Rewrite `Credential_Intake_Form` flow to create staging record before screen, wire file upload to it, update staging record after submission, and strip Issued_By/Expiry_Date from Update_Credential | done | Staging record must be created before the screen renders - file upload component needs a recordId at load time. Empty staging records may exist if a volunteer abandons after the pre-screen create step. |
 | 4.10 | Add Credential Requests related list to Credential layout | done | Allows admins to navigate directly from the Credential record to linked requests. |
 | 4.11 | Deploy to `jerry@credentials.sfdo` and run end-to-end verification | todo | See manual steps below. |
@@ -210,7 +212,7 @@ the base64 file upload approach and the collect-then-submit pattern.
 | # | Task | Status | Notes |
 |---|---|---|---|
 | 5.1 | Create `CredentialSubmissionController.cls` (without sharing Apex) | done | Three `@AuraEnabled` methods: getCredentialByToken, submitCredential, uploadFile. Inner class CredentialInfo. Re-validates token in submitCredential to prevent replay. Validates requestId in uploadFile to prevent file misuse. |
-| 5.2 | Create `CredentialSubmissionControllerTest.cls` | done | 8 test methods covering all validation paths and happy paths for all three Apex methods. Uses @TestSetup with 3 Credential__c records (fresh, expired, already-submitted). |
+| 5.2 | Create `CredentialSubmissionControllerTest.cls` | done | 8 test methods covering all validation paths and happy paths for all three Apex methods. Uses @TestSetup with 3 `Credential_Request__c` records (each with a hard-coded UUID-format token) and the `Link_Expiry_Days__c = -1` trick to simulate an expired link without controlling CreatedDate. 9/9 tests passing (includes GenerateUUID tests). |
 | 5.3 | Create `credentialSubmissionForm` LWC (html, js, css, js-meta.xml) | done | State machine with 7 states. File upload via native input + FileReader base64. Sequential file uploads to stay within Apex heap. Targets lightningCommunity__Page and lightningCommunity__Default. |
 | 5.4 | Deploy to `jerry@credentials.sfdo` and run Apex tests | todo | See verification steps in the plan document. |
 | 5.5 | Add component to LWR page and run end-to-end test | todo | See manual steps below. |
@@ -261,7 +263,12 @@ Confirm all 8 tests pass.
 
 ## Deviations
 
-None recorded yet.
+| # | Original plan | What actually happened | Reason |
+|---|---|---|---|
+| D1 | Token (Unique_Token__c) on `Credential__c`, generated at insert | Token moved to `Credential_Request__c`, generated when Credential moves to Requested | Decoupling the token from the Credential itself means each submission request gets its own independent token. Previous design issued one token per Credential for its entire lifetime; new design issues one token per request. |
+| D2 | Submission_Link__c formula on `Credential__c` | Formula moved to `Credential_Request__c` | Follows from D1 - the link is specific to the request, not the credential. |
+| D3 | Original `Credential_Intake_Form` Screen Flow queries `Credential__c WHERE Unique_Token__c = :id` | Flow not yet updated | `Unique_Token__c` still exists on `Credential__c` in the org because the legacy flow references it. Deleting the field would break the active flow. Update is pending (see `docs/todo.md`). |
+| D4 | Credential_Request_Approval flow copies Issued_By and Expiry_Date to Credential | Flow also sets Sighted = true and Status = Active | The `Block_Activation_Without_Sighting` validation rule requires Sighted = true in the same DML as Status = Active. Approving a request is the verification step, so setting both simultaneously is correct. |
 
 ---
 
@@ -269,4 +276,4 @@ None recorded yet.
 
 Items found during implementation that were not in the original spec. Log them here and in `docs/todo.md`.
 
-- None yet.
+- `Credential__c.Does_Not_Expire__c` field added directly in org (pulled down via metadata retrieve 2026-02-24). Mirrors the `Does_Not_Expire__c` field from the parent Credential Type; used by form to conditionally show the Expiry Date field.

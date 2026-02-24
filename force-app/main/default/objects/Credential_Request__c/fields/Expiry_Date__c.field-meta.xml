@@ -4,6 +4,7 @@
     <description>The document expiry date entered by the volunteer. Blank when the parent Credential Type has Does_Not_Expire__c = true, because the form hid the expiry date input. On approval this value is copied to Credential__c.Expiry_Date__c, which may also be blank - that is the correct outcome for non-expiring credentials.</description>
     <label>Expiry Date</label>
     <required>false</required>
+    <trackHistory>false</trackHistory>
     <trackTrending>false</trackTrending>
     <type>Date</type>
 </CustomField>

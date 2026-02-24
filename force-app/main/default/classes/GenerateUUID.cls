@@ -1,15 +1,15 @@
 /**
  * Invocable Apex action that generates a cryptographically random UUID (GUID).
  *
- * Used by the Credential Token Generation record-triggered flow to populate
- * Unique_Token__c on new Credential__c records. Salesforce Flow has no native
+ * Used by the Credential_Request_Creation record-triggered flow to populate
+ * Unique_Token__c on new Credential_Request__c records. Salesforce Flow has no native
  * GUID function, so this class bridges that gap.
  *
  * Uses Crypto.generateAesKey(128) which produces 128 bits of cryptographic
  * randomness - the same bit-length as a standard UUID v4. This ensures tokens
  * are not guessable or enumerable. See docs/decisions/use-guid-token-for-access-control.md.
  *
- * Does not own: Credential__c DML - the calling flow handles record updates.
+ * Does not own: Credential_Request__c DML - the calling flow handles record creation and token assignment.
  */
 public with sharing class GenerateUUID {
 

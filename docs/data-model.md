@@ -2,7 +2,7 @@
 
 ## Object Overview
 
-The data model has two custom objects. `Credential_Type__c` is the master lookup defining document categories. `Credential__c` is the transaction record that ties a specific credential requirement to a person or organisation and tracks it through its lifecycle.
+The data model has three custom objects. `Credential_Type__c` is the master lookup defining document categories. `Credential__c` is the transaction record that ties a specific credential requirement to a person or organisation and tracks it through its lifecycle. `Credential_Request__c` is the staging object that captures each submission attempt, holding the unique token and volunteer-submitted data pending admin review.
 
 ```
 Credential_Type__c  (1)
@@ -54,7 +54,8 @@ The core transaction object. One record per credential requirement per person or
 | Requested Date | Requested_Date__c | Date/Time | Stamped by a Before Update Flow when Status moves to "Requested". Records when the submission window opened. |
 | Issued By | Issued_By__c | Text | Provided by the volunteer via the intake form. The name of the issuing authority. |
 | Expiry Date | Expiry_Date__c | Date | Provided by the volunteer. Not shown on the form when `Does_Not_Expire__c` is TRUE on the parent Credential Type. |
-| Sighted | Sighted__c | Checkbox | Admin-only. Must be TRUE before Status can be set to "Active". Field History Tracking enabled. |
+| Does Not Expire | Does_Not_Expire__c | Checkbox | Mirrors the value from the linked Credential Type. When true, the Expiry Date field is hidden on the submission form and `Expiry_Date__c` will be blank on the record. |
+| Sighted | Sighted__c | Checkbox | Admin-only. Set to TRUE automatically by the `Credential_Request_Approval` flow when a Credential Request is approved. Must be TRUE before Status can be set to Active. Field History Tracking enabled. |
 
 ### Status Lifecycle
 
@@ -68,7 +69,7 @@ Draft -> Requested -> Under Review -> Active
 | Draft | Record created but submission not yet requested. |
 | Requested | Admin has sent the submission link to the volunteer. `Requested_Date__c` is stamped at this transition. Link is now active. |
 | Under Review | Volunteer has submitted their document via the form. Awaiting admin review. |
-| Active | Admin has sighted the document and confirmed it valid. Requires `Sighted__c = TRUE`. |
+| Active | Admin has approved the Credential Request. The `Credential_Request_Approval` flow sets `Sighted__c = true` and `Status__c = Active` simultaneously. Requires `Sighted__c = TRUE` (enforced by validation rule). |
 | Expired | Credential has passed its expiry date. Set by the nightly Scheduled Flow. |
 | Pending | Reserved for future use - e.g. awaiting a third-party verification step. |
 
@@ -76,7 +77,18 @@ Draft -> Requested -> Under Review -> Active
 
 | Rule | Logic | Purpose |
 |---|---|---|
-| Block activation without sighting | `Status__c = "Active" AND Sighted__c = FALSE` | Prevents activating a credential that an admin has not personally reviewed. |
+| Block activation without sighting | `ISPICKVAL(Status__c, "Active") AND NOT(Sighted__c)` | Prevents activating a credential without admin verification. In practice, the `Credential_Request_Approval` flow always sets Sighted and Status together, so this rule acts as a safety net against manual edits. |
+
+### Deprecated Fields (pending cleanup)
+
+The following fields exist on `Credential__c` from an earlier version of the design but are no longer used. They cannot be deleted yet because the legacy `Credential_Intake_Form` screen flow references `Unique_Token__c`. Once that flow is updated to query `Credential_Request__c`, these fields can be removed.
+
+| Field | Reason deprecated |
+|---|---|
+| `Unique_Token__c` | Token moved to `Credential_Request__c`. |
+| `Submission_Link__c` | Link formula moved to `Credential_Request__c`. |
+
+See `docs/todo.md` for the cleanup task.
 
 ### Key Relationships
 
@@ -112,7 +124,7 @@ Awaiting Submission -> Pending Review -> Approved
 |---|---|
 | Awaiting Submission | Set by the `Credential_Request_Creation` flow when the request is created. The volunteer has been sent the link but has not yet submitted. |
 | Pending Review | Set by the Apex controller (or Intake Flow) when the volunteer submits. Awaiting admin review. |
-| Approved | Admin has reviewed the submission and accepts it. Triggers the `Credential_Request_Approval` flow which copies `Issued_By__c` and `Expiry_Date__c` to the linked `Credential__c`. |
+| Approved | Admin has reviewed the submission and accepts it. Triggers the `Credential_Request_Approval` flow which copies `Issued_By__c` and `Expiry_Date__c` to the linked `Credential__c`, sets `Sighted__c = true`, and sets `Status__c = Active`. |
 | Rejected | Admin has reviewed the submission and rejects it. No automated action. Record is retained for audit. |
 
 ### Key Relationships

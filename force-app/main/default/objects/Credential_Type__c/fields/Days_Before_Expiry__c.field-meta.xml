@@ -3,7 +3,7 @@
     <fullName>Days_Before_Expiry__c</fullName>
     <description>How many days before a credential&apos;s Expiry_Date__c the nightly Scheduled Flow should trigger a renewal notification. For example, a value of 30 means the system alerts when expiry is 30 days away. Has no effect for credentials linked to a type where Does_Not_Expire__c is true.</description>
     <externalId>false</externalId>
-    <label>Days Before Expiry</label>
+    <label>Renewal Notification Lead Time (Days)</label>
     <precision>5</precision>
     <required>false</required>
     <scale>0</scale>

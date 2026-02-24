@@ -41,11 +41,29 @@ Credential Types only need to be created once. Reuse the same type for all volun
 2. Navigate to the **Credentials** related list and click **New**.
 3. Select the relevant **Credential Type**.
 4. The record is created with status **Draft**.
-5. Change the Status to **Requested** and save. The system automatically records the date and time of this change.
-6. On the Credential record, find the **Submission Link** in the highlights panel at the top.
-7. Click the copy icon next to the link and paste it into an email, SMS, or however you communicate with the volunteer.
+5. Change the Status to **Requested** and save.
+6. The system automatically does two things at this point:
+   - Records the date and time of the status change on the Credential.
+   - Creates a new **Credential Request** record linked to the Credential. This request contains the unique submission link for this specific request.
+7. Open the new Credential Request from the **Credential Requests** related list on the Credential record.
+8. Find the **Submission Link** in the highlights panel at the top of the Credential Request record.
+9. Copy the link and send it to the volunteer via email, SMS, or however you communicate with them.
 
-The link will remain active for the number of days set on the Credential Type. After that window closes, the link no longer works and you will need to reset the status and send a new link if required.
+Each time you set a Credential to Requested, a brand new Credential Request is created with a fresh unique link. Links from earlier requests stop working when a new one is issued.
+
+The link remains active for the number of days set in **Link Expiry Days** on the Credential Type. After that window closes, the link no longer works.
+
+### How Submission Links Work
+
+Each submission link is tied to a specific Credential Request record - not the Credential itself. The link contains a unique token (a randomly generated code) that identifies that exact request. This means:
+
+- If you send the same link to someone twice, it still points to the same request.
+- If you set Status back to Requested again, a completely new Credential Request is created with a new link and a fresh expiry window. The previous link stops working.
+- The token in the URL cannot be guessed or constructed - it is randomly generated each time.
+
+**If a link has expired:** Set the Credential Status back to Draft, then back to Requested. This creates a new Credential Request with a new link. Copy the new Submission Link from the new request record and resend it to the volunteer.
+
+**If a link was sent to the wrong person or may be compromised:** Set the Credential Request Status to Rejected. This invalidates the link immediately - anyone opening it will see an error. Then set the Credential Status to Requested again to issue a fresh link to the correct recipient.
 
 ### Reviewing a Submission
 
@@ -53,22 +71,24 @@ When a volunteer submits their document, the Credential status automatically cha
 
 **To review and activate a submission:**
 
-1. Open the Credential record. You will see the file attached in the Files related list.
-2. Open and review the document.
-3. If the document is valid, tick the **Sighted** checkbox to confirm you have physically or digitally reviewed the original.
-4. Update the **Expiry Date** if not already set by the volunteer.
-5. Change the Status to **Active**.
+1. Open the Credential record and navigate to the **Credential Requests** related list.
+2. Open the Credential Request with Status **Pending Review**.
+3. Review the **Issued By** and **Expiry Date** values the volunteer entered.
+4. Open the attached file from the **Files** related list on the Credential Request and review the document.
+5. If the document is valid, change the Credential Request **Status** to **Approved**.
+6. The system automatically updates the linked Credential: it copies Issued By and Expiry Date from the request, ticks the Sighted checkbox, and sets the Credential Status to **Active**.
 
-Note: the system will not allow you to set the status to Active unless the Sighted checkbox is ticked. This is a deliberate safeguard.
+If the document is not acceptable, set the Credential Request Status to **Rejected** and follow up with the volunteer directly. The rejected request is retained as an audit record.
 
 ### Common Issues
 
 | Situation | What to do |
 |---|---|
-| Volunteer says the link doesn't work | Check if the link has expired (compare today's date against Requested Date + Link Expiry Days on the Credential Type). Reset status to Draft then back to Requested to regenerate the expiry window, then resend the link. |
-| Volunteer submitted the wrong file | The submission cannot be recalled once submitted. Change status back to Requested and send a new link, or manually replace the file in Salesforce. |
-| Status is stuck on Under Review | Someone needs to review and sighted the document. Assign the record to the appropriate reviewer. |
-| Cannot set status to Active | Confirm the Sighted checkbox is ticked. The system blocks activation without it. |
+| Volunteer says the link has expired | Set the Credential Status to Draft, then back to Requested. A new Credential Request is created with a new link and fresh expiry window. Copy the Submission Link from the new request and resend it. |
+| Volunteer says the link is invalid or won't load | Check the URL was not truncated when sent. If the link looks complete, the request may have been rejected or the Credential status may have changed. Set Status to Requested again to issue a new request. |
+| Volunteer submitted the wrong file | The submission cannot be recalled once submitted. Set the Credential Request Status to Rejected, then set the Credential Status to Requested to issue a new request with a new link. |
+| Submission Link is missing from the Credential Request | The link is a formula field built from the token. If it is blank, the Unique Token field on the request is empty - this should not happen under normal operation. Check whether the Credential_Request_Creation flow is active in Setup. |
+| Status is stuck on Under Review | Open the Credential Request in Pending Review status and approve or reject it from there. |
 
 ---
 
@@ -100,9 +120,9 @@ Your coordinator will review your submission and contact you if anything further
 
 | Message | What it means |
 |---|---|
-| "This link is no longer valid." | The link has expired or has already been used. Contact your coordinator to request a new link. |
-| "This submission has already been received." | Your document was already submitted successfully. Contact your coordinator if you need to resubmit. |
-| "Invalid link." | The URL may be incomplete or corrupted. Try copying and pasting the full link from your message into a browser. |
+| "This submission link has expired." | The link was valid for a limited number of days and that window has now closed. Contact your coordinator and ask them to send you a new link. |
+| "Already submitted." | Your document was already submitted successfully using this link. Contact your coordinator if you need to resubmit. |
+| "Link not valid." | The URL may be incomplete or corrupted, or the link has been cancelled. Try copying and pasting the full link from your message directly into a browser address bar. If it still does not work, contact your coordinator. |
 
 ### Who to Contact
 

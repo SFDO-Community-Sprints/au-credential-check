@@ -4,6 +4,7 @@
     <description>Lifecycle state of this submission request. Awaiting Submission is set by the Credential_Request_Creation flow when the Credential status changes to Requested - the volunteer has not yet submitted. Pending Review is set by the LWC (or Intake Flow) when the volunteer submits - triggers admin review. Changing to Approved triggers the Credential_Request_Approval flow, which copies Issued_By__c and Expiry_Date__c to the linked Credential__c. Rejected records are retained for audit.</description>
     <label>Status</label>
     <required>false</required>
+    <trackHistory>false</trackHistory>
     <trackTrending>false</trackTrending>
     <type>Picklist</type>
     <valueSet>
