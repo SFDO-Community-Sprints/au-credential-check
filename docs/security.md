@@ -39,27 +39,28 @@ All data access for the form is performed by the Intake Screen Flow running in *
 
 ## GUID Token (IDOR Protection)
 
-Each Credential record has a `Unique_Token__c` field populated at creation by a Record-Triggered Flow using a GUID (Globally Unique Identifier). This token is:
+Each `Credential_Request__c` record has a `Unique_Token__c` field populated at creation by the `Credential_Request_Creation` flow using a GUID (Globally Unique Identifier). This token is:
 
-- Randomly generated - not derived from the record ID or any predictable value
+- Randomly generated - not derived from any record ID or predictable value
 - The only identifier embedded in the submission URL
-- Checked by the Intake Flow before any data is read or written
+- Checked by the Intake Flow (or Apex controller) before any data is read or written
+- Unique to the specific request - a new token is generated each time the Credential is set to Requested
 
 This prevents Insecure Direct Object Reference (IDOR) attacks. An attacker cannot enumerate valid submission URLs by guessing or iterating record IDs.
 
-The Salesforce record ID (`Credential__c.Id`) is never included in the submission URL.
+Neither the `Credential__c.Id` nor the `Credential_Request__c.Id` is included in the submission URL.
 
 ---
 
 ## Time-Bound Access
 
-Submission links are time-limited. The Intake Flow checks:
+Submission links are time-limited. The expiry is calculated from the `Credential_Request__c.CreatedDate` (the moment the request was created when the Credential moved to Requested):
 
 ```
-TODAY() > DateValue(Requested_Date__c) + Credential_Type__r.Link_Expiry_Days__c
+TODAY() > CreatedDate.date() + Credential_Type__r.Link_Expiry_Days__c
 ```
 
-If this condition is true, the flow shows an "expired" screen and does not proceed. The window is configured per Credential Type (e.g. 7 days), allowing different expiry periods for different document categories.
+If this condition is true, an "expired" screen is shown and submission is blocked. The window is configured per Credential Type (e.g. 7 days), allowing different expiry periods for different document categories.
 
 This limits the vulnerability window for any compromised or forwarded link.
 
@@ -81,7 +82,7 @@ A validation rule on `Credential__c` blocks the Status from being set to "Active
 
 | Field | Sensitivity | Handling |
 |---|---|---|
-| `Unique_Token__c` | High - functions as an access key | Hidden in the UI. Never logged or surfaced in error messages. Displayed only indirectly through the `Submission_Link__c` formula. |
+| `Credential_Request__c.Unique_Token__c` | High - functions as an access key | Not shown on layouts. Never logged or surfaced in error messages. Displayed only indirectly through the `Submission_Link__c` formula on the same record. |
 | `Sighted__c` | Medium - audit-significant | Field History Tracking enabled. Admin-only field. |
 | `Status__c` | Medium - lifecycle control | Changes are significant; automated timestamps on key transitions. |
 | Uploaded files | High - may contain PII | Stored as Salesforce Files linked to the `Credential_Request__c` staging record. Not attached to the Credential directly. Accessible only to internal users. |
@@ -91,6 +92,6 @@ A validation rule on `Credential__c` blocks the Status from being set to "Active
 ## Known Constraints and Considerations
 
 - The submission link itself is not encrypted in transit beyond standard HTTPS. The link should be treated as a credential - whoever holds it can submit to that specific Credential record during the validity window.
-- The system does not revoke links automatically when a link is forwarded or shared. If a link is compromised, an admin can reset it by changing Status back to Draft and then to Requested, which does not regenerate the GUID but does reset the time window. To fully invalidate a link, the GUID would need to be regenerated manually - consider adding a "Regenerate Token" button (see `docs/todo.md`).
+- The system does not revoke links automatically when a link is forwarded or shared. Because the token lives on `Credential_Request__c`, an admin can invalidate a link by setting the request Status to Rejected (which blocks the ALREADY_SUBMITTED gate) or by setting the parent Credential Status back to Draft and then to Requested again, which creates a new `Credential_Request__c` with a fresh token.
 - Files uploaded via the Guest User context are associated with the guest user in Salesforce's system user model. Confirm that your org's file access policies handle this appropriately.
 - The Screen Flow runs Without Sharing. This is intentional and required for the guest user pattern to work. The tradeoff is documented in `docs/decisions/use-screen-flow-in-system-mode.md`.

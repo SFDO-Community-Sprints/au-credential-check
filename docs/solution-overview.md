@@ -32,9 +32,9 @@ See `docs/decisions/` for the rationale behind each of these choices.
 |---|---|
 | **Credential Type** object | Master list of document types (e.g. Police Check). Defines expiry notification lead time and link expiry window. |
 | **Credential** object | The transaction record linking a person (Contact or Account) to a required document. Tracks status throughout its lifecycle. |
-| **Token Generation Flow** | Record-triggered flow that generates a GUID on the Credential record at creation. |
+| **Request Creation Flow** | Record-triggered After Update flow that creates a `Credential_Request__c` with a unique token when Credential status moves to "Requested". |
 | **Requested Date Flow** | Record-triggered Before Update flow that stamps `Requested_Date__c` when status moves to "Requested". |
-| **Intake Screen Flow** | The public-facing form. Validates the token, checks expiry, collects data, and updates the record. Runs in System Mode Without Sharing. |
+| **Intake Screen Flow** | The public-facing form. Validates the token, checks expiry, collects data, and updates the request record. Runs in System Mode Without Sharing. |
 | **Experience Cloud Site** | Hosts the Intake Flow on a public, unauthenticated URL. Guest User Profile is locked down to flow execution only. |
 | **Scheduled Expiry Flow** | Nightly flow that checks credential expiry dates and updates status to "Expired" as needed. |
 | **Validation Rule** | Prevents a Credential from being set to Active unless `Sighted__c` is TRUE. Enforces the verification step. |
@@ -46,8 +46,8 @@ See `docs/decisions/` for the rationale behind each of these choices.
 ### Admin Requests a Credential Submission
 
 1. Admin creates a Credential record, linking it to a Contact or Account and selecting a Credential Type.
-2. Admin changes Status to "Requested". The Before Update flow stamps `Requested_Date__c` with the current timestamp.
-3. Admin copies the `Submission_Link__c` formula field from the Highlights Panel and sends it to the volunteer (email, SMS, etc.).
+2. Admin changes Status to "Requested". The Before Update flow stamps `Requested_Date__c`. The After Update flow creates a `Credential_Request__c` with a unique token and Status = Awaiting Submission.
+3. Admin copies the `Submission_Link__c` formula field from the Credential Request Highlights Panel and sends it to the volunteer (email, SMS, etc.).
 
 ### Volunteer Submits a Credential
 

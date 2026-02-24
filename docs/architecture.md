@@ -36,7 +36,7 @@ Currently targeting **API v65.0**. Update `sourceApiVersion` in `sfdx-project.js
 │                                          │                  │
 │                           ┌──────────────▼──────────────┐   │
 │                           │    Record-Triggered Flows   │   │
-│                           │    - Token Generation       │   │
+│                           │    - Request Creation       │   │
 │                           │    - Requested Date Stamp   │   │
 │                           └─────────────────────────────┘   │
 │                                          │                  │
@@ -94,12 +94,12 @@ Currently targeting **API v65.0**. Update `sourceApiVersion` in `sfdx-project.js
 
 ### Submission Link Creation
 
-1. Admin creates `Credential__c` record.
-2. `Token Generation Flow` (record-triggered, After Insert) generates a GUID and writes it to `Unique_Token__c`.
-3. `Submission_Link__c` formula field assembles the public URL from the site base URL and the token.
-4. Admin changes Status to "Requested".
-5. `Requested Date Flow` (record-triggered, Before Update) detects the status change and stamps `Requested_Date__c`.
-6. Admin copies `Submission_Link__c` from the Highlights Panel and sends it to the volunteer.
+1. Admin creates `Credential__c` record (Status = Draft).
+2. Admin changes Status to "Requested".
+3. `Credential_Requested_Date_Stamp` flow (Before Update) stamps `Requested_Date__c` on the Credential.
+4. `Credential_Request_Creation` flow (After Update) creates a `Credential_Request__c` with a new UUID token and Status = Awaiting Submission.
+5. `Submission_Link__c` formula field on the request assembles the public URL from the token.
+6. Admin copies `Submission_Link__c` from the Credential Request Highlights Panel and sends it to the volunteer.
 
 ### Volunteer Form Submission
 
@@ -126,9 +126,10 @@ An alternative to the Intake Screen Flow. Both paths produce the same
 2. `@wire(CurrentPageReference)` delivers the page reference; the component
    extracts the `id` query parameter as the token.
 3. Component calls `CredentialSubmissionController.getCredentialByToken(token)`
-   imperatively. Apex queries `Credential__c WHERE Unique_Token__c = :token`
-   and evaluates the same three gates as the flow (no record, wrong status,
-   expired link). Returns a `CredentialInfo` wrapper with a status code.
+   imperatively. Apex queries `Credential_Request__c WHERE Unique_Token__c = :token`
+   and evaluates three gates (no request found, request not Awaiting Submission,
+   link expired based on `CreatedDate`). Returns a `CredentialInfo` wrapper with
+   a status code.
 4. The LWC state machine transitions to `FORM`, `INVALID_LINK`,
    `ALREADY_SUBMITTED`, or `LINK_EXPIRED` based on the returned status.
 5. Volunteer enters `Issued By`, `Expiry Date` (if applicable), and selects
@@ -136,9 +137,10 @@ An alternative to the Intake Screen Flow. Both paths produce the same
    file as a base64 data URI via `FileReader`.
 6. Volunteer clicks Submit. The component re-validates inputs, then calls
    `submitCredential(token, issuedBy, expiryDate)`. Apex re-validates the
-   token (second gate prevents replay), creates `Credential_Request__c`, and
-   updates `Credential__c.Status__c` to Under Review. Returns the new
-   `Credential_Request__c` Id.
+   token (second gate prevents replay), updates the existing
+   `Credential_Request__c` (sets Status = Pending Review, Issued_By__c,
+   Expiry_Date__c), and updates `Credential__c.Status__c` to Under Review.
+   Returns the `Credential_Request__c` Id.
 7. The component calls `uploadFile(requestId, fileName, base64Data)` once per
    selected file, sequentially. Apex creates a `ContentVersion` per call with
    `FirstPublishLocationId = requestId`; Salesforce auto-creates the
