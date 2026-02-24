@@ -53,8 +53,9 @@ Currently targeting **API v65.0**. Update `sourceApiVersion` in `sfdx-project.js
 │                           └─────────────────────────────┘   │
 │                                                             │
 │  ┌─────────────────────────────────────────────────────┐    │
-│  │              Scheduled Flow (Nightly)               │    │
+│  │        Scheduled Flow (Nightly) - NOT YET BUILT     │    │
 │  │  Checks Expiry_Date__c, updates Status__c           │    │
+│  │  See docs/todo.md                                   │    │
 │  └─────────────────────────────────────────────────────┘    │
 │                                                             │
 │  ┌─────────────────────────────────────────────────────┐    │
@@ -157,11 +158,13 @@ An alternative to the Intake Screen Flow. Both paths produce the same
    - Updates the linked `Credential__c` record, writing `Issued_By__c` and `Expiry_Date__c` from the request.
 5. Files stay on the `Credential_Request__c` record permanently as an audit trail.
 
-### Nightly Expiry Check
+### Nightly Expiry Check (not yet built)
 
-1. Scheduled Flow runs each night.
+1. Scheduled Flow would run each night.
 2. Queries `Credential__c` records where `Status__c = "Active"` and `Expiry_Date__c <= TODAY()`.
 3. Batch-updates `Status__c` to "Expired".
+
+See `docs/todo.md` for the outstanding task.
 
 ---
 
