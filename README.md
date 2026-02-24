@@ -1,8 +1,23 @@
 # credential-check-au
 
-A Salesforce DX project for managing and collecting credentials from volunteers (eg. Working with Childrens Check, Police Check, Drivers License).
+A Salesforce project for managing and collecting credentials from volunteers (eg. Working with Childrens Check, Police Check, Drivers License).
 
-Continuing the work of a team at the February 2024 Sprint, this project expanded the original goal of managing security and information checks for multiple people and matching qualifications to roles.
+Continuing the work of a team at the February 2024 Sprint, this project expanded the original goal of managing credential checks for people and organisations.
+
+## Contributors
+
+This project was built at the [SFDO Community Sprint](https://trailhead.salesforce.com/community/sprints) in Sydney by:
+
+- Jerry Huang
+- Gourav Sood
+- Jeremy Fahey
+- Katie Connors
+- Justin Yoon
+- Justine Mathieson
+- Kristyna Turner
+- Sam Clifton
+- Jennifer Cains
+- Ashish Maharjan
 
 ## Background
 
@@ -53,3 +68,5 @@ This project follows the [source-driven development](https://developer.salesforc
 ## Documentation
 
 See the `/docs` folder for architecture decisions, implementation notes, and the project todo list.
+
+
