@@ -105,26 +105,6 @@ export default class CredentialSubmissionForm extends LightningElement {
     }
 
     /**
-     * Safety net for Experience Builder and other host environments where the
-     * wire adapter may not provision a value before the first render. If the
-     * component is still on the loading state after the current microtask queue
-     * drains (giving the wire one cycle to fire), treat it as a missing token.
-     */
-    connectedCallback() {
-        // Promise.resolve() schedules a microtask - runs after the current
-        // synchronous execution but before the next repaint, giving @wire a
-        // chance to fire first. If it has fired, _state will no longer be
-        // LOADING and this is a no-op.
-        // eslint-disable-next-line @lwc/lwc/no-async-operation
-        Promise.resolve().then(() => {
-            if (this._state === STATE_LOADING) {
-                this._token = null;
-                this._loadCredential();
-            }
-        });
-    }
-
-    /**
      * Calls getCredentialByToken imperatively and drives the state machine.
      *
      * @wire is not used because the LWC runs as an unauthenticated guest user
