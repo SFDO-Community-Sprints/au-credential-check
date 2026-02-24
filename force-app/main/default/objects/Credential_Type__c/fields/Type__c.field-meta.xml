@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
     <fullName>Type__c</fullName>
-    <description>The human-readable label for this document category. This value is displayed to the volunteer on the submission form, so it should be clear and unambiguous (e.g. &quot;Police Check&quot;, &quot;Driver&apos;s Licence&quot;, &quot;Working with Children Check&quot;).</description>
+    <description>Deprecated - the Credential Type Name field now serves this purpose. This field is no longer required or used by any component and can be deleted from the org once existing records have been migrated.</description>
     <externalId>false</externalId>
     <label>Credential Type</label>
     <length>255</length>
-    <required>true</required>
+    <required>false</required>
     <trackTrending>false</trackTrending>
     <type>Text</type>
     <unique>false</unique>

@@ -56,7 +56,7 @@ public without sharing class CredentialSubmissionController {
         @AuraEnabled public String credentialId;
 
         /**
-         * Display label for the credential type (Credential_Type__r.Type__c).
+         * Display label for the credential type (Credential_Type__r.Name).
          * Null unless status = OK.
          */
         @AuraEnabled public String credentialType;
@@ -92,7 +92,7 @@ public without sharing class CredentialSubmissionController {
                     Status__c,
                     Requested_Date__c,
                     Credential_Type__c,
-                    Credential_Type__r.Type__c,
+                    Credential_Type__r.Name,
                     Credential_Type__r.Link_Expiry_Days__c,
                     Credential_Type__r.Does_Not_Expire__c
             FROM    Credential__c
@@ -117,7 +117,7 @@ public without sharing class CredentialSubmissionController {
         CredentialInfo info    = new CredentialInfo();
         info.status            = STATUS_OK;
         info.credentialId      = credential.Id;
-        info.credentialType    = credential.Credential_Type__r.Type__c;
+        info.credentialType    = credential.Credential_Type__r.Name;
         info.doesNotExpire     = credential.Credential_Type__r.Does_Not_Expire__c;
         return info;
     }

@@ -30,7 +30,7 @@ private class CredentialSubmissionControllerTest {
     @TestSetup
     static void setupTestData() {
         Credential_Type__c credType = new Credential_Type__c(
-            Type__c             = TEST_TYPE_LABEL,
+            Name                = TEST_TYPE_LABEL,
             Link_Expiry_Days__c = LINK_EXPIRY_DAYS,
             Does_Not_Expire__c  = false
         );
