@@ -4,20 +4,38 @@
 
 The data model has three custom objects. `Credential_Type__c` is the master lookup defining document categories. `Credential__c` is the transaction record that ties a specific credential requirement to a person or organisation and tracks it through its lifecycle. `Credential_Request__c` is the staging object that captures each submission attempt, holding the unique token and volunteer-submitted data pending admin review.
 
-```
-Credential_Type__c  (1)
-        |
-        | (Lookup)
-        |
-Credential__c  (many)
-    |   |     |
-    |   |     |
-    | Contact__c  Account__c
-    |  (Optional)  (Optional)
-    |
-    | (Lookup - deleteConstraint: Restrict)
-    |
-Credential_Request__c  (many)
+```mermaid
+erDiagram
+    Account ||--o{ Credential__c : "has"
+    Contact ||--o{ Credential__c : "has"
+    Credential_Type__c ||--o{ Credential__c : "defines"
+    Credential__c ||--o{ Credential_Request__c : "has requests"
+
+    Credential_Type__c {
+        string Type__c
+        int Days_Before_Expiry__c
+        int Link_Expiry_Days__c
+        boolean Does_Not_Expire__c
+    }
+
+    Credential__c {
+        id Account__c
+        id Contact__c
+        id Credential_Type__c
+        string Status__c
+        datetime Requested_Date__c
+        string Issued_By__c
+        date Expiry_Date__c
+        boolean Sighted__c
+    }
+
+    Credential_Request__c {
+        id Credential__c
+        string Status__c
+        string Unique_Token__c
+        string Issued_By__c
+        date Expiry_Date__c
+    }
 ```
 
 ---

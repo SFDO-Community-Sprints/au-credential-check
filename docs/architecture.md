@@ -25,75 +25,42 @@ Currently targeting **API v65.0**. Update `sourceApiVersion` in `sfdx-project.js
 
 ## Component Map
 
-```
-+-------------------------------------------------------------+
-|                      Salesforce Org                         |
-|                                                             |
-|  +-------------------+    +------------------------------+  |
-|  |  Credential Type  |<---|         Credential           |  |
-|  |  (Master Object)  |    |    (Transaction Object)      |  |
-|  +-------------------+    +--------------+---------------+  |
-|                                          |                  |
-|                           +--------------v--------------+   |
-|                           |    Record-Triggered Flows   |   |
-|                           |    - Request Creation       |   |
-|                           |      (calls GenerateUUID    |   |
-|                           |       Apex invocable)       |   |
-|                           |    - Requested Date Stamp   |   |
-|                           +-----------------------------+   |
-|                                          |                  |
-|                           +--------------v--------------+   |
-|                           |    Credential Request        |   |
-|                           |    (Staging Object)          |   |
-|                           |    Unique_Token__c + Link    |   |
-|                           +--------------+--------------+   |
-|                                          |                  |
-|                           +--------------v--------------+   |
-|                           |  Credential_Request_Approval |   |
-|                           |  (Record-Triggered Flow)     |   |
-|                           |  On Status = Approved:       |   |
-|                           |  - Copies Issued By + Expiry |   |
-|                           |    to linked Credential       |   |
-|                           |  - Sets Sighted = true       |   |
-|                           |  - Sets Status = Active      |   |
-|                           +-----------------------------+   |
-|                                                             |
-|  +-----------------------------------------------------+    |
-|  |        Scheduled Flow (Nightly) - NOT YET BUILT     |    |
-|  |  Checks Expiry_Date__c, updates Status__c           |    |
-|  |  See docs/todo.md                                   |    |
-|  +-----------------------------------------------------+    |
-|                                                             |
-|  +-----------------------------------------------------+    |
-|  |           Experience Cloud Site (Public)            |    |
-|  |  +-------------------------------------------+     |    |
-|  |  |  Intake Screen Flow (System Mode)          |     |    |
-|  |  |  - Receives token from URL (?id=)          |     |    |
-|  |  |  - Queries Credential_Request__c by token  |     |    |
-|  |  |  - Validates status and expiry             |     |    |
-|  |  |  - Collects volunteer input                |     |    |
-|  |  |  - Attaches file to Credential Request     |     |    |
-|  |  |  - Updates Credential to Under Review      |     |    |
-|  |  |  NOTE: pending update - see docs/todo.md   |     |    |
-|  |  +-------------------------------------------+     |    |
-|  |                                                     |    |
-|  |  +-------------------------------------------+     |    |
-|  |  |  credentialSubmissionForm LWC (LWR)        |     |    |
-|  |  |  - Reads ?id= via CurrentPageReference     |     |    |
-|  |  |  - Validates token via Apex (imperative)   |     |    |
-|  |  |  - Collects volunteer input                |     |    |
-|  |  |  - Uploads files as base64 via Apex        |     |    |
-|  |  |  - Same Credential_Request__c outcome      |     |    |
-|  |  +-------------------------------------------+     |    |
-|  |                    Both backed by                   |    |
-|  |  +-------------------------------------------+     |    |
-|  |  |  CredentialSubmissionController (Apex)     |     |    |
-|  |  |  without sharing - guest user data proxy   |     |    |
-|  |  |  getCredentialByToken / submitCredential / |     |    |
-|  |  |  uploadFile                                |     |    |
-|  |  +-------------------------------------------+     |    |
-|  +-----------------------------------------------------+    |
-+-------------------------------------------------------------+
+```mermaid
+graph TD
+    subgraph Salesforce_Internal [Salesforce Org - Internal Management]
+        CT[Credential Type]
+        C[Credential]
+        CRC[Flow: Request Creation]
+        RDS[Flow: Requested Date Stamp]
+        CR[Credential Request]
+        CRA[Flow: Request Approval]
+        SF[Scheduled Flow - Nightly]
+
+        C -- defines --> CT
+        C -- triggers --> CRC
+        C -- triggers --> RDS
+        CRC -- creates --> CR
+        CR -- triggers --> CRA
+        CRA -- updates --> C
+        SF -- monitors --> C
+    end
+
+    subgraph Salesforce_Public [Experience Cloud - Public Guest Access]
+        GUP[Guest User Profile]
+        EC[Experience Cloud Site]
+        ISF[Intake Screen Flow]
+        LWC[credentialSubmissionForm LWC]
+        CSC[Apex: CredentialSubmissionController]
+
+        GUP -- accesses --> EC
+        EC -- hosts --> ISF
+        EC -- hosts --> LWC
+        LWC -- proxy via --> CSC
+        ISF -- proxy via --> CSC
+    end
+
+    CSC -- reads/writes --> CR
+    CSC -- updates --> C
 ```
 
 ---
@@ -101,6 +68,23 @@ Currently targeting **API v65.0**. Update `sourceApiVersion` in `sfdx-project.js
 ## Data Flow
 
 ### Submission Link Creation
+
+```mermaid
+sequenceDiagram
+    actor Admin
+    participant Cred as Credential__c
+    participant Flow as Request Creation Flow
+    participant Invoc as Apex: GenerateUUID
+    participant Req as Credential_Request__c
+
+    Admin->>Cred: Change Status to "Requested"
+    activate Flow
+    Flow->>Invoc: Generate cryptographically random UUID
+    Invoc-->>Flow: UUID String
+    Flow->>Req: Create record (Awaiting Submission, Token = UUID)
+    deactivate Flow
+    Admin->>Req: Copy Submission_Link__c (Formula)
+```
 
 1. Admin creates `Credential__c` record (Status = Draft).
 2. Admin changes Status to Requested.
@@ -113,6 +97,32 @@ Currently targeting **API v65.0**. Update `sourceApiVersion` in `sfdx-project.js
 ### Volunteer Form Submission - LWC Path
 
 The LWC path is the primary implementation for LWR Experience Cloud sites.
+
+```mermaid
+sequenceDiagram
+    actor Vol as Volunteer
+    participant LWC as credentialSubmissionForm (JS)
+    participant Apex as CredentialSubmissionController
+    participant SF as Salesforce Data (CRQ, Files)
+
+    Vol->>LWC: Enters details, selects files
+    Vol->>LWC: Clicks "Submit"
+    activate LWC
+    LWC->>Apex: submitCredential(token, data)
+    activate Apex
+    Apex->>SF: Validate token & Update Request/Credential
+    Apex-->>LWC: Request ID
+    deactivate Apex
+    loop For each file
+        LWC->>Apex: uploadFile(requestId, fileName, base64)
+        activate Apex
+        Apex->>SF: Create ContentVersion
+        Apex-->>LWC: Success
+        deactivate Apex
+    end
+    LWC->>Vol: Show Success State
+    deactivate LWC
+```
 
 1. Volunteer opens the URL. LWR Experience Cloud loads the `credentialSubmissionForm` component.
 2. `@wire(CurrentPageReference)` delivers the page reference; the component extracts the `id` query parameter as the token.

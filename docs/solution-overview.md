@@ -51,12 +51,44 @@ See `docs/decisions/` for the rationale behind each of these choices.
 
 ### Admin Requests a Credential Submission
 
+```mermaid
+sequenceDiagram
+    actor Admin
+    participant Credential as Credential Object
+    participant Flows as Salesforce Flows
+    participant Request as Credential Request Object
+
+    Admin->>Credential: Create record (Draft)
+    Admin->>Credential: Change Status to "Requested"
+    activate Flows
+    Flows->>Credential: Stamp Requested_Date__c
+    Flows->>Request: Create record with UUID Token
+    deactivate Flows
+    Admin->>Request: Open record
+    Admin->>Admin: Copy Submission Link & Send to Volunteer
+```
+
 1. Admin creates a Credential record, linking it to a Contact or Account and selecting a Credential Type.
 2. Admin changes Status to Requested. The Before Update flow stamps `Requested_Date__c`. The After Update flow creates a `Credential_Request__c` with a unique GUID token and Status = Awaiting Submission.
 3. Admin opens the new Credential Request from the Credential Requests related list on the Credential record.
 4. Admin copies the `Submission_Link__c` formula field from the Credential Request highlights panel and sends it to the volunteer (email, SMS, etc.).
 
 ### Volunteer Submits a Credential
+
+```mermaid
+graph TD
+    A[Volunteer opens Link] --> B{Token found?}
+    B -- No --> C[Invalid Link Page]
+    B -- Yes --> D{Status 'Awaiting Submission'?}
+    D -- No --> E[Already Submitted Page]
+    D -- Yes --> F{Link Expired?}
+    F -- Yes --> G[Link Expired Page]
+    F -- No --> H[Show Intake Form]
+    H --> I[Volunteer enters data & uploads files]
+    I --> J[Submit]
+    J --> K[Update Request: Status = 'Pending Review']
+    K --> L[Update Credential: Status = 'Under Review']
+```
 
 1. Volunteer receives the link and opens it in a browser. The Experience Cloud site loads.
 2. The Intake Screen Flow (or LWC) receives the `id` token from the URL query parameter.
@@ -68,6 +100,25 @@ See `docs/decisions/` for the rationale behind each of these choices.
 5. On submission, the request is updated to Status = Pending Review with the volunteer-entered values. The Credential status moves to Under Review. Uploaded files attach to the Credential Request record.
 
 ### Admin Reviews and Activates
+
+```mermaid
+sequenceDiagram
+    actor Admin
+    participant Request as Credential Request
+    participant File as Attached File
+    participant Flow as Approval Flow
+    participant Credential as Credential Object
+
+    Admin->>Request: Open "Pending Review" record
+    Admin->>File: Review document
+    Admin->>Request: Set Status to "Approved"
+    activate Flow
+    Flow->>Credential: Copy data (Issued By, Expiry)
+    Flow->>Credential: Set "Sighted" = true
+    Flow->>Credential: Set Status = "Active"
+    deactivate Flow
+    Admin->>Credential: Audit "Sighted" history
+```
 
 1. Admin receives notification (or monitors the queue via list view) and opens the Credential record.
 2. Admin navigates to the Credential Requests related list and opens the request with Status = Pending Review.
